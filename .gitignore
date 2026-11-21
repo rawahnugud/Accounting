@@ -1,3 +1,5 @@
 .env
 *.sqlite*
 /vendor/
+/bootstrap/cache/*.php
+/storage/logs/*.log

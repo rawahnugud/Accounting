@@ -24,8 +24,29 @@ final class Treasury
     public function transfer(int $company, int $branch, int $source, int $destination,
         string $currency, string $amount, string $key, string $actor): int
     {
+        return $this->post($company, $branch, $source, $destination, $currency, $amount, $key, $actor, null);
+    }
+
+    public function transferForStaff(int $userId, int $company, int $branch, int $source,
+        int $destination, string $currency, string $amount, string $key): int
+    {
+        return $this->post($company, $branch, $source, $destination, $currency, $amount, $key,
+            'staff:'.$userId, $userId);
+    }
+
+    private function post(int $company, int $branch, int $source, int $destination,
+        string $currency, string $amount, string $key, string $actor, ?int $userId): int
+    {
         $this->db->exec('BEGIN IMMEDIATE');
         try {
+            if ($userId !== null) {
+                $allowed = $this->db->prepare("SELECT 1 FROM branch_staff
+                    WHERE user_id = ? AND branch_id = ? AND company_id = ? AND role = 'cashier'");
+                $allowed->execute([$userId, $branch, $company]);
+                if (!$allowed->fetchColumn()) {
+                    throw new BranchAccessDenied('Transfer permission required.');
+                }
+            }
             $minor = $this->minorUnits($currency, $amount);
             $id = $this->record([$company, $branch, $source, $destination, $currency, $minor, $key, $actor]);
             $this->db->exec('COMMIT');
