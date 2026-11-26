@@ -1,26 +1,27 @@
 # Midnight Travel Accounting
-Staff sign in with a provisioned account and see their assigned branches. Viewers can inspect bank and safe accounts. Cashiers can post same-branch transfers in the company's reporting currency. The signed-in user ID is recorded on each transfer. Branch permission is checked again inside the SQLite write transaction.
 
-## Local setup
-This development runtime uses Laravel 12 and requires PHP 8.2 or later, Composer and PDO SQLite. Use an isolated accounting directory with its own database. From a fresh checkout run:
+The Accounting web application runs on Symfony 6.4, PHP 8.1+, Composer and PDO SQLite. Staff can sign in, view assigned branches and bank/safe accounts, and record same-currency transfers as a cashier. Each posting records the staff member and creates balanced journal lines. A duplicate request returns the original transfer.
+
+## Existing cPanel staging installation
+
+Keep the existing installation at `~/apps/accounting`. Prepare the compatibility release in a separate directory, using the PHP binary already verified on the Accounts host:
 
 ```sh
-composer install
-cp .env.example .env
-php artisan key:generate
-touch database/database.sqlite
-php artisan migrate
-php artisan serve
+export PATH="/opt/alt/php81/usr/bin:$PATH"
+git clone --branch compat/php81 --single-branch https://github.com/rawahnugud/Accounting.git "$HOME/apps/accounting-php81" &&
+sh "$HOME/apps/accounting-php81/scripts/prepare-cpanel.sh"
 ```
 
-A fresh database has no users or financial setup. Once company, branch and account records are provisioned, run `php artisan staff:assign staff@example.test 1 cashier` with the intended email and branch ID. A new user is prompted for a name and password. Use `viewer` for read-only access. Company/branch configuration screens and opening balances are pending.
+If preparation was interrupted after cloning, rerun the script from the same release. It verifies Composer's requirements, links the existing private environment file and database, checks the migration ledger, and renders the login screen locally. The original directory remains necessary for the linked files. Existing staff sign in again after the switch.
 
-Run `php tests/treasury.php` for the posting checks and `python3 tests/staff_http.py` for the local HTTP integration test with synthetic accounts and a temporary database. Python is only used by the test.
+After READY, change the Accounts document root to `apps/accounting-php81/public`. With the verified older CageFS deployment, switch off isolation for **accounts.midnighttravel.net only** to inherit PHP 8.1 and access the private application directory. This also makes account-level permissions the boundary between this site and sibling domains. Keep all private files outside the web root. Check HTTPS `/login` for “Staff sign in” and test a staging staff login. To roll back the web change, restore the original document root and per-domain settings. Both releases use the same SQLite database.
 
-## Verification and decisions
-Invoice main's composer.json requests PHP ^8.1 and Laravel ^10.0. Its .cpanel.yml calls scripts/update-cpanel.sh, which checks installed Laravel 10, PHP 8.1+, and PDO SQLite. Live PHP versions, hosting limits, backups and SQLite contention remain unverified. The historical PHP 8.1 host configuration cannot run this development build. Confirm availability of PHP 8.2+ for an isolated accounting subdomain before any staging or deployment decision. Never run this migration against Invoice.
+## Fresh local installation
 
-Currency precision is explicit. This increment accepts exact decimal strings and rejects excess fractional digits. Choose the reporting currency, approval thresholds, exchange-rate direction, rounding, and overdraft policy before exposing posting to users. Test fixture currency and branch choices are examples. This module records movements only. Opening balances, overdraft enforcement, reversal workflows and FX journals are pending.
+Install the locked dependencies with `composer install`. Copy `.env.example` to `.env` and set a private random APP_KEY, or reuse an existing Accounting key. Generate a fresh value with `php -r 'echo "base64:".base64_encode(random_bytes(32)), PHP_EOL;'`. Set DB_DATABASE to the absolute path to the Accounting SQLite file, and create that empty file. Run `php artisan migrate`. For local development only, start `php -S 127.0.0.1:8000 -t public public/index.php`.
 
-## Project skills
-Project-local skill files were read directly for this session. Ponytail revision dec89d9040ad863decb0207003dcd500cb00aa03 and Caveman revision a192894723a8f47e7f504c7b5041967ff1f18e55 are under .agents/skills with upstream licenses. AGENTS.md enables automatic use in this project.
+Once a company and branch are provisioned, run `php artisan staff:assign staff@example.test 1 cashier` with the actual email and branch ID. New staff are prompted for a name and password. The viewer role grants read access. Branch, account and opening balance setup screens remain pending.
+
+## Verification and scope
+
+`php tests/treasury.php` checks posting, amount precision, tenancy and retries. `python3 tests/staff_http.py` exercises authentication, branch authorization, transfers, CSRF and revocation against temporary data. The three migration names and existing SQLite records are compatible with the Laravel build. Cross-currency journals, customer/supplier ledgers, ticket operations and other full-system features remain pending.

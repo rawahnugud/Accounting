@@ -3,3 +3,6 @@
 /vendor/
 /bootstrap/cache/*.php
 /storage/logs/*.log
+/storage/framework/cache/symfony/
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitignore

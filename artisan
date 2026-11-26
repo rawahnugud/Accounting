@@ -1,18 +1,89 @@
 #!/usr/bin/env php
 <?php
+declare(strict_types=1);
 
-use Illuminate\Foundation\Application;
-use Symfony\Component\Console\Input\ArgvInput;
+use App\Database;
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
-define('LARAVEL_START', microtime(true));
+require __DIR__.'/bootstrap/runtime.php';
+$cli = new Application('Midnight Travel Accounting');
 
-// Register the Composer autoloader...
-require __DIR__.'/vendor/autoload.php';
+$cli->register('migrate')->setDescription('Apply pending Accounting schema migrations')
+    ->addOption('force', null, InputOption::VALUE_NONE, 'Allow unattended migration')
+    ->setCode(function ($input, $output): int {
+        $db = Database::open();
+        $migrations = [
+            '0001_01_01_000000_create_users_table' => '000_users.sql',
+            '2026_11_22_000001_create_treasury' => '001_treasury.sql',
+            '2026_11_22_000002_create_branch_staff' => '002_branch_staff.sql',
+        ];
+        $db->exec('BEGIN IMMEDIATE');
+        try {
+            $db->exec('CREATE TABLE IF NOT EXISTS migrations (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                migration TEXT NOT NULL, batch INTEGER NOT NULL)');
+            $applied = $db->query('SELECT migration FROM migrations')->fetchAll(PDO::FETCH_COLUMN);
+            $batch = 1 + (int)$db->query('SELECT MAX(batch) FROM migrations')->fetchColumn();
+            $record = $db->prepare('INSERT INTO migrations(migration,batch) VALUES (?,?)');
+            foreach (array_diff_key($migrations, array_flip($applied)) as $name => $file) {
+                $db->exec(file_get_contents(__DIR__.'/database/'.$file));
+                $record->execute([$name, $batch]);
+            }
+            $db->exec('COMMIT');
+        } catch (Throwable $error) {
+            $db->exec('ROLLBACK');
+            throw $error;
+        }
+        $output->writeln('Accounting schema is current.');
+        return 0;
+    });
 
-// Bootstrap Laravel and handle the command...
-/** @var Application $app */
-$app = require_once __DIR__.'/bootstrap/app.php';
+$cli->register('staff:assign')->setDescription('Assign a staff member to a branch')
+    ->addArgument('email', InputArgument::REQUIRED)
+    ->addArgument('branch', InputArgument::REQUIRED)
+    ->addArgument('role', InputArgument::REQUIRED)
+    ->setCode(function ($input, $output): int {
+        $io = new SymfonyStyle($input, $output);
+        $email = $input->getArgument('email');
+        $role = $input->getArgument('role');
+        $branch = $input->getArgument('branch');
+        $db = Database::open();
+        $query = $db->prepare('SELECT company_id FROM branches WHERE id = ?');
+        $query->execute([$branch]);
+        $company = $query->fetchColumn();
+        if (!$company || !filter_var($email, FILTER_VALIDATE_EMAIL) || !in_array($role, ['viewer','cashier'], true)) {
+            throw new InvalidArgumentException('Enter a valid email, existing branch ID, and viewer or cashier.');
+        }
+        $user = $db->prepare('SELECT id FROM users WHERE email = ?');
+        $user->execute([$email]);
+        $id = $user->fetchColumn();
+        if (!$id) {
+            $name = trim((string)$io->ask('Staff name'));
+            $password = (string)$io->askHidden('Password (12 to 72 bytes)');
+            if ($name === '' || strlen($password) < 12 || strlen($password) > 72) {
+                throw new InvalidArgumentException('A name and a password of 12 to 72 bytes are required.');
+            }
+            $hash = password_hash($password, PASSWORD_BCRYPT);
+        }
+        $db->beginTransaction();
+        try {
+            if (!$id) {
+                $db->prepare('INSERT INTO users(name,email,password,created_at,updated_at)
+                    VALUES (?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)')->execute([$name,$email,$hash]);
+                $id = $db->lastInsertId();
+            }
+            $db->prepare('INSERT INTO branch_staff(user_id,company_id,branch_id,role) VALUES (?,?,?,?)
+                ON CONFLICT(user_id,branch_id) DO UPDATE SET role=excluded.role')
+                ->execute([$id,$company,$branch,$role]);
+            $db->commit();
+        } catch (Throwable $error) {
+            $db->rollBack();
+            throw $error;
+        }
+        $io->success('Branch access saved.');
+        return 0;
+    });
 
-$status = $app->handleCommand(new ArgvInput);
-
-exit($status);
+exit($cli->run());

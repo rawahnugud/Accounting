@@ -1,0 +1,9 @@
+{% extends 'layout.html.twig' %}
+{% set title = 'Staff sign in' %}
+{% block content %}
+{% if failed %}<p role="alert">Unable to sign in with those details.</p>{% endif %}
+<form action="{{ path('login') }}" method="post">{{ include('csrf.html.twig') }}
+<p><label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" value="{{ email }}" required></p>
+<p><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></p>
+<button>Sign in</button></form>
+{% endblock %}

@@ -1,79 +1,106 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
 use App\Accounting\BranchAccessDenied;
 use App\Accounting\Treasury;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
+use PDO;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\Security\Http\Authentication\AuthenticationUtils;
 
-final class StaffTreasuryController
+final class StaffTreasuryController extends AbstractController
 {
-    public function login(Request $request)
+    public function __construct(private PDO $db) {}
+
+    public function login(AuthenticationUtils $auth): Response
     {
-        $credentials = $request->validate(['email' => 'required|email', 'password' => 'required|string']);
-        if (!Auth::attempt($credentials)) {
-            throw ValidationException::withMessages(['email' => 'Unable to sign in with those details.']);
+        if ($this->getUser()) {
+            return $this->redirectToRoute('home');
         }
-        $request->session()->regenerate();
-        return redirect()->intended(route('home'));
+        return $this->render('login.html.twig', ['failed' => $auth->getLastAuthenticationError() !== null,
+            'email' => $auth->getLastUsername()]);
     }
 
-    public function logout(Request $request)
+    public function logout(): never
     {
-        Auth::logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-        return redirect()->route('login');
+        throw new \LogicException('The firewall handles sign-out.');
     }
 
-    private function assignments(Request $request)
+    public function health(): Response
     {
-        return DB::table('branch_staff as staff')
-            ->join('branches as b', 'b.id', '=', 'staff.branch_id')
-            ->join('companies as c', 'c.id', '=', 'staff.company_id')
-            ->where('staff.user_id', $request->user()->getAuthIdentifier())
-            ->select('b.id', 'b.name', 'c.id as company_id', 'c.name as company', 'c.reporting_currency', 'staff.role');
+        return new Response('OK');
     }
 
-    public function home(Request $request)
+    private function assignments(?int $branch = null): array
     {
-        return view('accounting.branches', ['branches' => $this->assignments($request)->orderBy('company')->orderBy('b.name')->get()]);
+        $sql = 'SELECT s.user_id, s.company_id, s.role, b.id, b.name, c.name AS company, c.reporting_currency
+            FROM branch_staff s JOIN users u ON u.id = s.user_id
+            JOIN branches b ON b.id = s.branch_id AND b.company_id = s.company_id
+            JOIN companies c ON c.id = s.company_id WHERE u.email = ?';
+        $params = [$this->getUser()->getUserIdentifier()];
+        if ($branch !== null) {
+            $sql .= ' AND b.id = ?';
+            $params[] = $branch;
+        }
+        $query = $this->db->prepare($sql.' ORDER BY c.name, b.name');
+        $query->execute($params);
+        return $query->fetchAll();
     }
 
-    public function branch(Request $request, int $branch)
+    public function home(): Response
     {
-        $assignment = $this->assignments($request)->where('b.id', $branch)->firstOrFail();
-        $accounts = DB::table('cash_accounts')->where('branch_id', $branch)
-            ->where('currency', $assignment->reporting_currency)->orderBy('name')->get();
-        return view('accounting.branch', compact('assignment', 'accounts'));
+        return $this->render('branches.html.twig', ['branches' => $this->assignments()]);
     }
 
-    public function transfer(Request $request, int $branch)
+    public function branch(int $branch, Request $request): Response
     {
-        $assignment = $this->assignments($request)->where('b.id', $branch)->firstOrFail();
-        abort_unless($assignment->role === 'cashier', 403);
-        $data = $request->validate([
-            'source' => 'required|integer', 'destination' => 'required|integer|different:source',
-            'amount' => 'required|string|max:40', 'request_key' => 'required|uuid',
-        ]);
-        $accounts = DB::table('cash_accounts')->where('branch_id', $branch)
-            ->where('currency', $assignment->reporting_currency)
-            ->whereIn('id', [$data['source'], $data['destination']])->count();
-        abort_unless($accounts === 2, 422);
+        $assignment = $this->assignments($branch)[0] ?? throw $this->createNotFoundException();
+        $accounts = $this->db->prepare('SELECT id, name, kind FROM cash_accounts
+            WHERE branch_id = ? AND company_id = ? AND currency = ? ORDER BY name');
+        $accounts->execute([$branch, $assignment['company_id'], $assignment['reporting_currency']]);
+        $old = $request->getSession()->getFlashBag()->get('transfer_input')[0] ?? [];
+        return $this->render('branch.html.twig', ['assignment' => $assignment, 'accounts' => $accounts->fetchAll(),
+            'old' => $old, 'request_key' => (string) \Symfony\Component\Uid\Uuid::v4()]);
+    }
+
+    public function transfer(int $branch, Request $request): Response
+    {
+        $assignment = $this->assignments($branch)[0] ?? throw $this->createNotFoundException();
+        if ($assignment['role'] !== 'cashier') {
+            throw $this->createAccessDeniedException();
+        }
+        $input = $request->request;
+        if (!$this->isCsrfTokenValid('staff', $input->get('_token'))) {
+            throw new HttpException(419, 'Form expired.');
+        }
+        $source = filter_var($input->get('source'), FILTER_VALIDATE_INT);
+        $destination = filter_var($input->get('destination'), FILTER_VALIDATE_INT);
+        $amount = (string)$input->get('amount');
+        $key = (string)$input->get('request_key');
         try {
-            $id = (new Treasury(DB::connection()->getPdo()))->transferForStaff(
-                (int)$request->user()->getAuthIdentifier(), $assignment->company_id, $branch,
-                $data['source'], $data['destination'], $assignment->reporting_currency,
-                $data['amount'], $data['request_key']
-            );
+            if (!$source || !$destination || $source === $destination || strlen($amount) > 40 ||
+                !preg_match('/\A[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\z/i', $key)) {
+                throw new \InvalidArgumentException('Select two different accounts and enter a valid amount.');
+            }
+            $accounts = $this->db->prepare('SELECT COUNT(*) FROM cash_accounts
+                WHERE branch_id = ? AND company_id = ? AND currency = ? AND id IN (?, ?)');
+            $accounts->execute([$branch, $assignment['company_id'], $assignment['reporting_currency'], $source, $destination]);
+            if ((int)$accounts->fetchColumn() !== 2) {
+                throw new HttpException(422, 'Invalid accounts.');
+            }
+            $id = (new Treasury($this->db))->transferForStaff($assignment['user_id'], $assignment['company_id'],
+                $branch, $source, $destination, $assignment['reporting_currency'], $amount, $key);
+            $this->addFlash('message', "Transfer #$id recorded.");
         } catch (BranchAccessDenied $e) {
-            abort(403);
+            throw $this->createAccessDeniedException();
         } catch (\InvalidArgumentException|\DomainException $e) {
-            throw ValidationException::withMessages(['amount' => $e->getMessage()]);
+            $this->addFlash('error', $e->getMessage());
+            $this->addFlash('transfer_input', compact('source', 'destination', 'amount'));
         }
-        return redirect('/branches/'.$branch)->with('message', 'Transfer #'.$id.' recorded.');
+        return $this->redirectToRoute('branch', ['branch' => $branch]);
     }
 }
