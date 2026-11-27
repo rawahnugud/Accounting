@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory() as temp:
     password = secrets.token_urlsafe(18)
     hashed = subprocess.check_output([php, "-r", "echo password_hash(trim(fgets(STDIN)), PASSWORD_BCRYPT);"],
                                      input=password.encode()).decode()
-    conn = sqlite3.connect(db)
+    conn = sqlite3.connect(str(db))
     conn.executescript("""
 
         INSERT INTO companies VALUES (1,'Example','USD');
@@ -44,7 +44,7 @@ with tempfile.TemporaryDirectory() as temp:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
     origin = f"http://127.0.0.1:{port}"
-    server = subprocess.Popen([php,"-S",f"127.0.0.1:{port}","-t","public","public/index.php"],env=env,
+    server = subprocess.Popen([php,"-d","log_errors=1","-d","error_log=/dev/stderr","-S",f"127.0.0.1:{port}","-t","public","public/index.php"],env=env,
                               stdout=subprocess.DEVNULL,stderr=open(Path(temp)/"http.log","w"))
     def call(path, data=None, status=200):
         body = None if data is None else parse.urlencode(data).encode()
