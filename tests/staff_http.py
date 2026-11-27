@@ -204,6 +204,7 @@ with tempfile.TemporaryDirectory() as temp:
         assert "Total assets" in report and "Aging of open balances" in report and "Unbalanced difference" not in report
         assert "Outstanding" in call("/branches/1/office/post?task=receipt")
         assert "Sales this month" in call("/branches/1/office/dashboard")
+        assert "Due date" not in call("/branches/1/office/post?task=transfer") and "Due date" in call("/branches/1/office/post?task=sale")
         print("PASS allocations, cancellations, management report, recovered sale, registrations, workbook and document numbering")
         ar = call("/branches/1/office/dashboard?lang=ar")
         assert 'lang="ar" dir="rtl"' in ar and 'تسجيل عملية بيع' in ar
