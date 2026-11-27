@@ -99,10 +99,12 @@ with tempfile.TemporaryDirectory() as temp:
         for section in ["dashboard","report","post","export","statements"]:
             call("/branches/2/office/"+section)
         call("/control", {"_token":token,"action":"party","branch":1,"kind":"customer","name":"Client A","currency":"USD"})
-        post = call("/branches/1/office/post")
+        post = call("/branches/1/office/post?task=sale")
         data = {"_token":token,"request_key":field(post,"request_key"),"day":"2026-01-01","kind":"sale",
                 "reference":"Test sale","customer":1,"amount":"15.25","currency":"USD","mode":"preview"}
         assert "Confirm posting" in call("/branches/1/office/post",data)
+        assert "Test sale" in call("/branches/1/office/post",{**data,"mode":"edit"})
+        assert conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]==0
         data["mode"]="confirm"
         assert "Document D-1" in call("/branches/1/office/post",data)
         call("/branches/1/office/post",data)
@@ -111,12 +113,12 @@ with tempfile.TemporaryDirectory() as temp:
         call("/overview")
         call("/branches/1/office/workbook")
         def entry(kind, **values):
-            page = call("/branches/1/office/post")
+            page = call("/branches/1/office/post?task="+kind)
             payload = dict(_token=token,request_key=field(page,"request_key"),day="2026-01-01",
                            reference="Office test",mode="confirm",kind=kind)
             call("/branches/1/office/post",dict(payload,**values))
         entry("receipt",cash="1",customer="1",amount="5")
-        call("/branches/1/matches",dict(_token=token,debit=1,credit=2,account="customer:1",amount="5",request_key=field(call("/branches/1/office/post"),"request_key")))
+        call("/branches/1/matches",dict(_token=token,debit=1,credit=2,account="customer:1",amount="5",request_key=field(call("/branches/1/office/post?task=sale"),"request_key")))
         assert conn.execute("SELECT outstanding_minor FROM open_items WHERE id=1").fetchone()==(1025,)
         call("/branches/1/matches",dict(_token=token,remove=1))
         assert conn.execute("SELECT outstanding_minor FROM open_items WHERE id=1").fetchone()==(1525,)

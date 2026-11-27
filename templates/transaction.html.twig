@@ -1,0 +1,54 @@
+{% if not chosen %}
+{% for group,items in groups %}
+<h2>{{ group }}</h2>
+<div class="task-links">{% for code,label in items %}<a href="{{ path('office',{branch:branch,section:'post',task:code}) }}">{{ label }}</a>{% endfor %}</div>
+{% endfor %}
+{% elseif preview %}
+<p><strong>{{ chosen }}</strong> · {{ f.reference }} · {{ f.day }}</p>
+<p>Check the accounts and amounts below, then confirm to save this transaction.</p>
+<div class="scroll"><table><tr><th>Account</th><th>Account movement</th><th>Value in {{ info.base }}</th></tr>{% for e in preview %}<tr><td>{{ names[e.account]|default(e.account) }}</td><td>{{ e.native }} {{ e.currency }}</td><td>{{ e.base }}</td></tr>{% endfor %}</table></div>
+<form method="post">{{ include('csrf.html.twig') }}{% for k,v in f %}{% if k not in ['_token','mode'] %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
+<button name="mode" value="confirm">Confirm posting</button> <button class="secondary" name="mode" value="edit">Edit details</button></form>
+{% else %}
+{% set fields={
+ sale:'customer supplier',reissue:'customer supplier',refund:'customer supplier',receipt:'customer cash',customer_refund:'customer cash',
+ supplier_payment:'supplier cash',supplier_refund:'supplier cash',liability:'creditor',repayment:'creditor cash',payroll:'employee',
+ salary_payment:'employee cash',advance:'employee cash',recovery:'employee',transfer:'cash destination',opening_party:'customer supplier'
+} %}
+{% set accounts=(fields[kind]|default('cash'))|split(' ') %}
+{% set travel=kind in ['sale','reissue','refund'] %}
+{% set linked=kind in ['reissue','refund','receipt','customer_refund','supplier_payment','supplier_refund','repayment','salary_payment','reverse'] %}
+{% set requiredApproval=info.role!='admin' and kind in approvalTypes %}
+<a href="{{ path('office',{branch:branch,section:'post'}) }}">← Choose a different task</a>
+<form class="card task-form" method="post">{{ include('csrf.html.twig') }}
+<input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="request_key" value="{{ f.request_key|default(key) }}">
+{% if kind=='opening_party' %}<p>Choose either a customer or a supplier.</p>{% endif %}
+<div class="grid">
+{% for field in (kind=='reverse'?[]:accounts) %}
+{% set isCash=field in ['cash','destination'] %}
+{% set options=isCash?cash:parties|filter(p=>p.kind==field) %}
+{% set optional=kind=='opening_party' or (travel and field=='supplier') %}
+<label>{{ isCash?(field=='destination'?'To bank or safe':(kind=='transfer'?'From bank or safe':'Bank or safe')):field|capitalize }}{{ optional?' (optional)' }}
+<select name="{{ field }}" {{ optional?'':'required' }}><option value="">Choose an account</option>{% for a in options %}<option value="{{ a.id }}" {{ f[field]|default('')==a.id?'selected' }}>{{ a.name }} · {{ a.currency }}</option>{% endfor %}</select>
+{% if options is empty %}<small>{% if info.role=='admin' %}<a href="{{ path('control',{setup:isCash?'cash':'party',branch:branch,kind:field}) }}#setup-{{ isCash?'cash':'party' }}">Add {{ isCash?'a bank or safe':'a '~field }}</a>{% else %}Ask your branch administrator to add {{ isCash?'a bank or safe':'a '~field }}.{% endif %}</small>{% endif %}</label>
+{% endfor %}
+{% if kind!='reverse' %}<label>{{ kind=='sale'?'Selling price':(kind=='reissue'?'Additional selling price':'Amount') }}<input name="amount" inputmode="decimal" value="{{ f.amount|default('') }}" {{ not travel and kind!='payroll'?'required' }}><small>{{ 'cash' in accounts?'Use the currency of the selected bank or safe.':(kind=='payroll'?'Leave blank to use the employee’s saved salary.':'') }}</small></label>
+{% if 'cash' not in accounts %}<label>Amount currency<select name="currency">{% for code,n in prec %}<option {{ f.currency|default(info.base)==code?'selected' }}>{{ code }}</option>{% endfor %}</select></label>{% endif %}{% endif %}
+<label>Transaction date<input type="date" name="day" value="{{ f.day|default(today) }}" required></label>
+<label>Reference<input name="reference" maxlength="160" placeholder="e.g. invoice or bank reference" value="{{ f.reference|default('') }}" required></label>
+{% if linked %}<label>Original document {{ kind not in ['reverse','reissue','refund']?'(optional)' }}<input name="related" inputmode="numeric" pattern="[0-9]+" list="documents" placeholder="Choose or enter the D-number digits" value="{{ f.related|default('') }}" {{ kind in ['reverse','reissue','refund']?'required' }}>
+<datalist id="documents">{% for d in recentDocs %}<option value="{{ d.id }}">D-{{ d.id }} · {{ d.reference }} · {{ d.day }}</option>{% endfor %}</datalist>
+{% if kind not in ['reverse','reissue','refund'] %}<small>Choose an invoice to reduce its outstanding balance, or leave blank for a payment on account.</small>{% endif %}</label>{% endif %}
+{% if travel %}
+<label>Service<select name="service"><option value="">Choose service</option>{% if f.service|default('') and f.service not in services|map(s=>s.name) %}<option selected>{{ f.service }}</option>{% endif %}{% for s in services %}<option {{ f.service|default('')==s.name?'selected' }}>{{ s.name }}</option>{% endfor %}</select></label>
+<label>Supplier cost (optional)<input name="cost" inputmode="decimal" value="{{ f.cost|default('') }}"><small>Select the supplier when entering a cost.</small></label>
+<label>Supplier cost currency<select name="cost_currency">{% for code,n in prec %}<option {{ f.cost_currency|default(f.currency|default(info.base))==code?'selected' }}>{{ code }}</option>{% endfor %}</select></label>
+{% endif %}</div>
+{% if travel %}<details {{ f.ticket|default('') or f.pnr|default('') or f.passenger|default('') or f.route|default('') or f.airline|default('')?'open' }}><summary>Ticket and passenger details</summary><div class="grid">{% for k,label in {passenger:'Passenger name',pnr:'Booking reference (PNR)',ticket:'Ticket number',airline:'Airline',route:'Route'} %}<label>{{ label }}<input name="{{ k }}" value="{{ f[k]|default('') }}"></label>{% endfor %}</div></details>
+<details {{ f.converted|default('') or f.override|default('')?'open' }}><summary>Currency conversion</summary><label>Converted amount in {{ info.base }}<input name="converted" inputmode="decimal" value="{{ f.converted|default('') }}"></label>{% if info.role=='admin' %}<label>Override rate (source units per {{ info.base }})<input name="override" inputmode="decimal" value="{{ f.override|default('') }}"></label>{% endif %}</details>{% endif %}
+{% if kind=='payroll' %}<div class="grid">{% for k,label in {allowance:'Allowances',deduction:'Deductions'} %}<label>{{ label }} (optional)<input name="{{ k }}" inputmode="decimal" value="{{ f[k]|default('') }}"></label>{% endfor %}</div>{% endif %}
+<details {{ f.due|default('') or f.note|default('')?'open' }}><summary>Due date and notes</summary><label>Due date<input type="date" name="due" value="{{ f.due|default('') }}"></label><label>Notes<input name="note" value="{{ f.note|default('') }}"></label></details>
+{% if requiredApproval %}<p>An administrator must approve this transaction before it enters the books.</p>{% else %}<button name="mode" value="preview">Review transaction</button>{% endif %}
+<button {% if not requiredApproval %}class="secondary"{% endif %} name="mode" value="request">Send for approval</button>
+</form>
+{% endif %}

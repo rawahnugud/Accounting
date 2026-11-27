@@ -7,6 +7,7 @@ use DomainException;
 
 final class Books
 {
+    public const APPROVAL_TYPES = ['opening','opening_party','reverse','deposit','withdrawal','payroll','advance','recovery','salary_payment','liability'];
     public const TYPES = [
         'sale'=>'Service sale', 'reissue'=>'Ticket reissue (incremental amounts)', 'refund'=>'Customer and supplier credit',
         'receipt'=>'Customer receipt', 'supplier_payment'=>'Supplier payment', 'customer_refund'=>'Pay customer refund',
@@ -73,7 +74,7 @@ final class Books
         if (!$admin && $access['role']!=='cashier') { throw new DomainException('Posting permission required.'); }
         $kind=$f['kind'] ?? '';
         if (!isset(self::TYPES[$kind])) { throw new DomainException('Choose an operation.'); }
-        if (!$admin && in_array($kind,['opening','opening_party','reverse','deposit','withdrawal','payroll','advance','recovery','salary_payment','liability'],true)) {
+        if (!$admin && in_array($kind,self::APPROVAL_TYPES,true)) {
             throw new DomainException('Administrator approval required.');
         }
         $day=self::date($f['day'] ?? '');

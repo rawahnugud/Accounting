@@ -28,7 +28,7 @@ final class Kernel extends BaseKernel
     public function getCacheDir(): string
     {
         return ($_SERVER['LARAVEL_STORAGE_PATH'] ?? $this->getProjectDir().'/storage')
-            .'/framework/cache/symfony/office-v2/'.$this->environment;
+            .'/framework/cache/symfony/office-v3/'.$this->environment;
     }
 
     protected function configureContainer(ContainerConfigurator $container): void

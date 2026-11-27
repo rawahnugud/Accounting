@@ -336,18 +336,22 @@ final class OfficeController extends AbstractController
                 $this->addFlash('message','Submitted for administrator approval.');
                 return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'dashboard']);
             }
-            $isPreview=($f['mode'] ?? '')==='preview';
-            try {
-                $result=$books->transact($f,$isPreview);
-                if (!$isPreview || $result['id']) {
-                    return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'report','doc'=>$result['id']]);
+            $mode=$f['mode'] ?? '';
+            if (!in_array($mode,['preview','confirm','edit'],true)) { throw new HttpException(422,'Choose a transaction action.'); }
+            if ($mode!=='edit') {
+                $isPreview=($f['mode'] ?? '')==='preview';
+                try {
+                    $result=$books->transact($f,$isPreview);
+                    if (!$isPreview || $result['id']) {
+                        return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'report','doc'=>$result['id']]);
+                    }
+                    $preview=$result['lines'];
+                } catch (DomainException $e) {
+                    if ($e->getMessage()==='Administrator approval required.') {
+                        $this->db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'permission denied',?)")->execute([$u['id'],'Branch '.$branch.' · '.($f['kind'] ?? '')]);
+                    }
+                    $this->addFlash('error',$e->getMessage());
                 }
-                $preview=$result['lines'];
-            } catch (DomainException $e) {
-                if ($e->getMessage()==='Administrator approval required.') {
-                    $this->db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'permission denied',?)")->execute([$u['id'],'Branch '.$branch.' · '.($f['kind'] ?? '')]);
-                }
-                $this->addFlash('error',$e->getMessage());
             }
         }
         $prec=array_column($this->rows('SELECT * FROM currencies'),'decimals','code');
@@ -463,6 +467,8 @@ final class OfficeController extends AbstractController
             $preview[$i]['base']=Amounts::format($e['base'],$prec[$info['base']]);
         }
         return $this->render('office.html.twig',compact('section','info','branch','metrics','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','recs','pending','checks','matches')+[
+            'approvalTypes'=>Books::APPROVAL_TYPES,
+            'recentDocs'=>$section==='post' ? $this->rows('SELECT id,reference,day FROM documents d WHERE branch_id=? AND reversal_of IS NULL AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY id DESC LIMIT 100',[$branch]) : [],
             'types'=>Books::TYPES,'key'=>(string)Uuid::v4(),'today'=>gmdate('Y-m-d'),
             'staff'=>$this->rows('SELECT DISTINCT u.id,u.name FROM users u JOIN ledger l ON l.user_id=u.id WHERE branch_id=?',[$branch]),
 

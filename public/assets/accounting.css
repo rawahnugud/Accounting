@@ -68,3 +68,10 @@ td{overflow-wrap:anywhere}tbody tr:last-child td{border-bottom:0}tbody tr:hover 
   main.frame{width:100%;margin:0;padding:0}.scroll{overflow:visible}.card,.scroll,details{box-shadow:none;border-radius:0}
   .page-heading{padding-bottom:.5rem}h1{font-size:22pt}table{font-size:9pt}tr{break-inside:avoid}th,td{padding:4pt}
 }
+.task-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:.7rem}
+.task-links a{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem;background:white;border:1px solid var(--line);border-radius:12px;font-weight:650;text-decoration:none}
+.task-links a::after{content:'→'}.task-links a:hover{border-color:var(--wine);background:var(--rose)}
+.setup-note{padding:.8rem 1rem;background:var(--rose);border-radius:10px}.task-form{margin-top:1rem}.task-form details{margin-top:1rem;box-shadow:none}
+.task-form small{display:block;font-weight:400;margin-top:.3rem}.secondary{background:white;color:var(--wine)}
+.open-branch{font-size:.84rem;font-weight:650;color:var(--wine)}@media(max-width:600px){.branch-link{flex-wrap:wrap}.branch-name{flex:1}.open-branch{width:100%}}
+@media print{.task-links,.setup-note{display:none}}
