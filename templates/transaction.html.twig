@@ -1,0 +1,69 @@
+{% if not chosen %}
+{% set everyday=['sale','receipt','supplier_payment','transfer'] %}
+<div class="task-links daily">{% for code in everyday %}<a href="{{ path('office',{branch:branch,section:'post',task:code}) }}">{{ tasks[code]|ui }}</a>{% endfor %}</div>
+{% for group,items in groups %}
+{% set extra=items|filter((label,code)=>code not in everyday and (info.role=='admin' or code not in adminTypes)) %}
+{% if extra %}<details><summary>{{ group|ui }}</summary><div class="task-links">{% for code,label in extra %}<a href="{{ path('office',{branch:branch,section:'post',task:code}) }}">{{ label|ui }}</a>{% endfor %}</div></details>{% endif %}
+{% endfor %}
+{% elseif preview %}
+<p><strong>{{ (chosen)|ui }}</strong> · {{ f.reference }} · {{ f.day }}</p>
+<p>{{ 'Check the accounts and amounts below, then confirm to save this transaction.'|ui }}</p>
+<div class="scroll"><table><tr><th>{{ 'Account'|ui }}</th><th>{{ 'Account movement'|ui }}</th><th>{{ 'Value in'|ui }} <bdi>{{ info.base }}</bdi></th></tr>{% for e in preview %}<tr><td>{{ names[e.account]|default(e.account) }}</td><td><bdi>{{ e.native }}</bdi> {{ e.currency }}</td><td><bdi>{{ e.base }}</bdi></td></tr>{% endfor %}</table></div>
+<form method="post">{{ include('csrf.html.twig') }}{% for k,v in f %}{% if k not in ['_token','mode'] %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
+<button name="mode" value="confirm">{{ 'Confirm posting'|ui }}</button> <button class="secondary" name="mode" value="edit">{{ 'Edit details'|ui }}</button></form>
+{% else %}
+{% set fields={
+ sale:'customer supplier',reissue:'customer supplier',refund:'customer supplier',receipt:'customer cash',customer_refund:'customer cash',
+ supplier_payment:'supplier cash',supplier_refund:'supplier cash',liability:'creditor',repayment:'creditor cash',payroll:'employee',
+ salary_payment:'employee cash',advance:'employee cash',recovery:'employee',transfer:'cash destination',opening_party:'customer supplier'
+} %}
+{% set accounts=(fields[kind]|default('cash'))|split(' ') %}
+{% set travel=kind in ['sale','reissue','refund'] %}
+{% set linked=kind in ['reissue','refund','receipt','customer_refund','supplier_payment','supplier_refund','repayment','salary_payment','reverse'] %}
+<a href="{{ path('office',{branch:branch,section:'post'}) }}">{{ '← Choose a different task'|ui }}</a>
+<form class="card task-form" method="post">{{ include('csrf.html.twig') }}
+{% if f.amend|default(0) %}<h2>{{ 'Amend document'|ui }} D-{{ f.amend }}</h2><input type="hidden" name="amend" value="{{ f.amend }}"><label>{{ 'Reason for correction'|ui }}<input name="reason" required></label>{% endif %}
+<input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="request_key" value="{{ f.request_key|default(key) }}">
+{% if kind=='opening_party' %}<p>{{ 'Choose either a customer or a supplier.'|ui }}</p>{% endif %}
+<div class="grid">
+{% for field in (kind=='reverse'?[]:accounts) %}
+{% set isCash=field in ['cash','destination'] %}
+{% set options=isCash?cash:parties|filter(p=>p.kind==field) %}
+{% set optional=kind=='opening_party' or (travel and field=='supplier') %}
+<label>{{ (isCash?(field=='destination'?'To bank or safe':(kind=='transfer'?'From bank or safe':'Bank or safe')):field|capitalize)|ui }}{{ (optional?' (optional)')|ui }}
+<select name="{{ field }}" {{ optional?'':'required' }}><option value="">{{ 'Choose an account'|ui }}</option>{% for a in options %}<option value="{{ a.id }}" {{ f[field]|default('')==a.id?'selected' }}>{{ a.name }} · {{ a.currency }}</option>{% endfor %}{% if kind=='sale' and field in ['customer','supplier'] %}<option value="new" {{ f[field]|default('')=='new'?'selected' }}>{{ (field=='customer'?'Add a new client':'Add a new supplier')|ui }}</option>{% endif %}</select>
+
+{% if options is empty and not (kind=='sale' and field in ['customer','supplier']) %}<small>{% if info.role=='admin' %}<a href="{{ path('control',{setup:isCash?'cash':'party',branch:branch,kind:field}) }}#setup-{{ isCash?'cash':'party' }}">{{ 'Add'|ui }} {{ (isCash?'a bank or safe':'a '~field)|ui }}</a>{% else %}{{ 'Ask your branch administrator to add'|ui }} {{ (isCash?'a bank or safe':'a '~field)|ui }}.{% endif %}</small>{% endif %}</label>
+{% if kind=='sale' and field in ['customer','supplier'] %}<label data-new-account="{{ field }}">{{ (field=='customer'?'New client name':'New supplier name')|ui }}<input name="new_{{ field }}" maxlength="200" value="{{ f['new_'~field]|default('') }}"></label>{% endif %}
+{% endfor %}
+{% if kind!='reverse' %}<label>{{ (kind=='sale'?'Selling price':(kind=='reissue'?'Additional selling price':'Amount'))|ui }}<input name="amount" inputmode="decimal" value="{{ f.amount|default('') }}" {{ not travel and kind!='payroll'?'required' }}><small>{{ ('cash' in accounts?'Use the currency of the selected bank or safe.':(kind=='payroll'?'Leave blank to use the employee’s saved salary.':''))|ui }}</small></label>
+{% if 'cash' not in accounts %}<label>{{ 'Amount currency'|ui }}<select name="currency">{% for code,n in prec %}<option {{ f.currency|default(info.base)==code?'selected' }}>{{ code }}</option>{% endfor %}</select></label>{% endif %}{% endif %}
+<label>{{ 'Transaction date'|ui }}<input type="date" name="day" value="{{ f.day|default(today) }}" required></label>
+<label>{{ 'Reference'|ui }}<input name="reference" maxlength="160" placeholder="{{ 'Generated if blank'|ui }}" value="{{ f.reference|default('') }}"></label>
+{% if linked %}<label>{{ 'Original document'|ui }} {{ (kind not in ['reverse','reissue','refund']?'(optional)')|ui }}<input name="related" inputmode="numeric" pattern="[0-9]+" list="documents" placeholder="{{ 'Choose or enter the D-number digits'|ui }}" value="{{ f.related|default('') }}" {{ kind in ['reverse','reissue','refund']?'required' }}>
+<datalist id="documents">{% for d in recentDocs %}<option value="{{ d.id }}">D-{{ d.id }} · {{ d.reference }} · {{ d.day }}</option>{% endfor %}</datalist>
+{% if kind not in ['reverse','reissue','refund'] %}<small>{{ 'Choose an invoice to reduce its outstanding balance, or leave blank for a payment on account.'|ui }}</small>{% endif %}</label>{% endif %}
+{% if travel %}
+<label>{{ 'Service'|ui }}<select name="service"><option value="">{{ 'Choose service'|ui }}</option>{% if f.service|default('') and f.service not in services|map(s=>s.name) %}<option value="{{ f.service }}" selected>{{ f.service|ui }}</option>{% endif %}{% for s in services %}<option value="{{ s.name }}" {{ f.service|default('')==s.name?'selected' }}>{{ s.name|ui }}</option>{% endfor %}</select></label>
+<label>{{ 'Supplier cost (optional)'|ui }}<input name="cost" inputmode="decimal" value="{{ f.cost|default('') }}"><small>{{ 'Select the supplier when entering a cost.'|ui }}</small></label>
+<label>{{ 'Supplier cost currency'|ui }}<select name="cost_currency">{% for code,n in prec %}<option {{ f.cost_currency|default(f.currency|default(info.base))==code?'selected' }}>{{ code }}</option>{% endfor %}</select></label>
+{% endif %}</div>
+{% if travel %}<details {{ f.ticket|default('') or f.pnr|default('') or f.passenger|default('') or f.route|default('') or f.airline|default('')?'open' }}><summary>{{ 'Ticket and passenger details'|ui }}</summary><div class="grid">{% for k,label in {passenger:'Passenger name',pnr:'Booking reference (PNR)',ticket:'Ticket number',airline:'Airline',route:'Route'} %}<label>{{ (label)|ui }}<input name="{{ k }}" value="{{ f[k]|default('') }}"></label>{% endfor %}</div></details>
+<details {{ f.converted|default('') or f.override|default('')?'open' }}><summary>{{ 'Currency conversion'|ui }}</summary><label>{{ 'Converted amount in'|ui }} <bdi>{{ info.base }}</bdi><input name="converted" inputmode="decimal" value="{{ f.converted|default('') }}"></label>{% if info.role=='admin' %}<label>{{ 'Override rate (source units per'|ui }} <bdi>{{ info.base }}</bdi>)<input name="override" inputmode="decimal" value="{{ f.override|default('') }}"></label>{% endif %}</details>{% endif %}
+{% if kind=='payroll' %}<div class="grid">{% for k,label in {allowance:'Allowances',deduction:'Deductions'} %}<label>{{ (label)|ui }} {{ '(optional)'|ui }}<input name="{{ k }}" inputmode="decimal" value="{{ f[k]|default('') }}"></label>{% endfor %}</div>{% endif %}
+<details {{ kind=='reverse' or f.due|default('') or f.note|default('')?'open' }}><summary>{{ 'Due date and notes'|ui }}</summary><label>{{ 'Due date'|ui }}<input type="date" name="due" value="{{ f.due|default('') }}"></label><label>{{ (kind=='reverse'?'Reason for voiding':'Notes')|ui }}<input name="note" {{ kind=='reverse'?'required' }} value="{{ f.note|default('') }}"></label></details>
+<button name="mode" value="save">{{ (kind=='sale'?'Save sale':'Save transaction')|ui }}</button>
+</form>
+{% if kind=='sale' %}
+<script>
+document.querySelectorAll('[data-new-account]').forEach(function(row) {
+    const select=row.closest('form').elements[row.dataset.newAccount], input=row.querySelector('input');
+    function sync() { row.hidden=select.value!=='new'; input.disabled=row.hidden; input.required=!row.hidden; }
+    select.addEventListener('change',sync); sync();
+});
+const sale=document.querySelector('.task-form');
+function checkSupplier(){sale.elements.supplier.required=Number(sale.elements.cost.value)>0;}
+sale.elements.cost.addEventListener('input',checkSupplier);checkSupplier();
+</script>
+{% endif %}
+{% endif %}

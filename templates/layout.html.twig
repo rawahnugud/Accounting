@@ -1,0 +1,43 @@
+<!doctype html>
+{% set arabic = app.request.locale == 'ar' %}
+<html lang="{{ app.request.locale }}" dir="{{ arabic ? 'rtl' : 'ltr' }}">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#85144b">
+<title>{{ title|ui }} · {{ 'Midnight Travel Accounting'|ui }}</title>
+<link rel="stylesheet" href="{{ app.request.basePath }}/assets/accounting.css?v=6">
+</head>
+<body class="{{ app.user ? 'staff' : 'guest' }}">
+<a class="skip" href="#workspace">{{ 'Skip to content'|ui }}</a>
+{% set areas={'home':'Dashboard'} %}
+{% if app.user and is_granted('ROLE_ADMIN') %}{% set areas=areas|merge({'control':'Admin control panel'}) %}{% endif %}
+{% if app.user %}{% set navigation %}
+<nav class="primary" aria-label="{{ 'Main navigation'|ui }}">{% for route,label in areas %}
+<a href="{{ path(route) }}" {% if app.request.attributes.get('_route')==route %}aria-current="page"{% endif %}>{{ label|ui }}</a>
+{% endfor %}</nav>
+{% if branch is defined and info is defined %}
+<nav class="primary branch-nav" aria-label="{{ 'Branch navigation'|ui }}">
+<a href="{{ path('office',{branch:branch,section:'report',view:'statement'}) }}" {% if app.request.query.get('view')=='statement' %}aria-current="page"{% endif %}>{{ 'Account statements'|ui }}</a>
+{% for page,label in {'post':'Record transaction','report':'General ledger','statements':'Management reports'} %}
+{% if page!='post' or info.role!='viewer' %}<a href="{{ path('office',{branch:branch,section:page}) }}" {% if app.request.attributes.get('section')==page and app.request.query.get('view')!='statement' %}aria-current="page"{% endif %}>{{ label|ui }}</a>{% endif %}
+{% endfor %}</nav>
+{% endif %}
+<form class="logout" action="{{ path('logout') }}" method="post">{{ include('csrf.html.twig') }}<button>{{ 'Sign out'|ui }}</button></form>
+{% endset %}
+<aside class="sidebar">
+<a class="brand" href="{{ path('home') }}"><img src="{{ app.request.basePath }}/assets/midnight-travel.png" width="1500" height="439" alt="Midnight Travel"><span>{{ 'Accounting'|ui }}</span></a>
+<div class="desktop-nav">{{ navigation }}</div>
+<details class="mobile-nav"><summary>{{ 'Main menu'|ui }}</summary>{{ navigation }}</details>
+</aside>{% endif %}
+<div class="shell">
+<header class="topbar">{% if app.user %}<strong>{{ 'Accounting system'|ui }}</strong>{% endif %}
+<nav class="language" aria-label="English / العربية">{% for code,label in {'en':'English','ar':'العربية'} %}
+<a lang="{{ code }}" hreflang="{{ code }}" href="?{{ app.request.query.all|merge({lang:code})|url_encode }}" {% if app.request.locale==code %}aria-current="true"{% endif %}>{{ label }}</a>
+{% endfor %}</nav></header>
+<main id="workspace" class="frame">
+{% if not app.user %}<img class="login-logo" src="{{ app.request.basePath }}/assets/midnight-travel.png" alt="Midnight Travel">{% endif %}
+<div class="page-heading"><h1>{{ title|ui }}</h1></div>
+{% for error in app.flashes('error') %}<p role="alert">{{ error|ui }}</p>{% endfor %}
+{% for message in app.flashes('message') %}<p role="status">{{ message|ui }}</p>{% endfor %}
+{% block content %}{% endblock %}
+</main></div></body></html>

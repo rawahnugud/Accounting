@@ -1,26 +1,57 @@
 # Midnight Travel Accounting
-Staff sign in with a provisioned account and see their assigned branches. Viewers can inspect bank and safe accounts. Cashiers can post same-branch transfers in the company's reporting currency. The signed-in user ID is recorded on each transfer. Branch permission is checked again inside the SQLite write transaction.
 
-## Local setup
-This development runtime uses Laravel 12 and requires PHP 8.2 or later, Composer and PDO SQLite. Use an isolated accounting directory with its own database. From a fresh checkout run:
+The Accounting web application runs on Symfony 6.4, PHP 8.1+, Composer and PDO SQLite. Staff can sign in, view assigned branches and bank/safe accounts, and record same-currency transfers as a cashier. Each posting records the staff member and creates balanced journal lines. A duplicate request returns the original transfer.
+
+## Existing cPanel staging installation
+
+Keep the existing installation at `~/apps/accounting`. Prepare the compatibility release in a separate directory, using the PHP binary already verified on the Accounts host:
 
 ```sh
-composer install
-cp .env.example .env
-php artisan key:generate
-touch database/database.sqlite
-php artisan migrate
-php artisan serve
+export PATH="/opt/alt/php81/usr/bin:$PATH"
+git clone --branch compat/php81 --single-branch https://github.com/rawahnugud/Accounting.git "$HOME/apps/accounting-php81" &&
+sh "$HOME/apps/accounting-php81/scripts/prepare-cpanel.sh"
 ```
 
-A fresh database has no users or financial setup. Once company, branch and account records are provisioned, run `php artisan staff:assign staff@example.test 1 cashier` with the intended email and branch ID. A new user is prompted for a name and password. Use `viewer` for read-only access. Company/branch configuration screens and opening balances are pending.
+If preparation was interrupted after cloning, rerun the script from the same release. It verifies Composer's requirements, links the existing private environment file and database, checks the migration ledger, and renders the login screen locally. The original directory remains necessary for the linked files. Existing staff sign in again after the switch.
 
-Run `php tests/treasury.php` for the posting checks and `python3 tests/staff_http.py` for the local HTTP integration test with synthetic accounts and a temporary database. Python is only used by the test.
+After READY, change the Accounts document root to `apps/accounting-php81/public`. With the verified older CageFS deployment, switch off isolation for **accounts.midnighttravel.net only** to inherit PHP 8.1 and access the private application directory. This also makes account-level permissions the boundary between this site and sibling domains. Keep all private files outside the web root. Check HTTPS `/login` for “Staff sign in” and test a staging staff login. To roll back the web change, restore the original document root and per-domain settings. Both releases use the same SQLite database.
 
-## Verification and decisions
-Invoice main's composer.json requests PHP ^8.1 and Laravel ^10.0. Its .cpanel.yml calls scripts/update-cpanel.sh, which checks installed Laravel 10, PHP 8.1+, and PDO SQLite. Live PHP versions, hosting limits, backups and SQLite contention remain unverified. The historical PHP 8.1 host configuration cannot run this development build. Confirm availability of PHP 8.2+ for an isolated accounting subdomain before any staging or deployment decision. Never run this migration against Invoice.
+## Fresh local installation
 
-Currency precision is explicit. This increment accepts exact decimal strings and rejects excess fractional digits. Choose the reporting currency, approval thresholds, exchange-rate direction, rounding, and overdraft policy before exposing posting to users. Test fixture currency and branch choices are examples. This module records movements only. Opening balances, overdraft enforcement, reversal workflows and FX journals are pending.
+Install the locked dependencies with `composer install`. Copy `.env.example` to `.env` and set a private random APP_KEY, or reuse an existing Accounting key. Generate a fresh value with `php -r 'echo "base64:".base64_encode(random_bytes(32)), PHP_EOL;'`. Set DB_DATABASE to the absolute path to the Accounting SQLite file, and create that empty file. Run `php artisan migrate`. For local development only, start `php -S 127.0.0.1:8000 -t public public/index.php`.
 
-## Project skills
-Project-local skill files were read directly for this session. Ponytail revision dec89d9040ad863decb0207003dcd500cb00aa03 and Caveman revision a192894723a8f47e7f504c7b5041967ff1f18e55 are under .agents/skills with upstream licenses. AGENTS.md enables automatic use in this project.
+Once a company and branch are provisioned, run `php artisan staff:assign staff@example.test 1 cashier` with the actual email and branch ID. New staff are prompted for a name and password. The viewer role grants read access. Use the administrator control panel and branch posting screen for further setup.
+
+## Verification and scope
+
+`php tests/treasury.php` checks posting, amount precision, tenancy and retries. `python3 tests/staff_http.py` exercises authentication, branch authorization, transfers, CSRF and revocation against temporary data. The three migration names and existing SQLite records are compatible with the Laravel build. The office upgrade below adds accounting workflows using a fourth, additive migration.
+
+## Accounting office upgrade on cPanel
+
+In the active PHP 8.1 release run the following. The upgrade creates a consistent, integrity-checked SQLite snapshot outside the web root before applying pending migrations. Supply the email of the existing owner login explicitly. The script prompts for the chosen password with terminal echo disabled and invalidates old login sessions when they next refresh.
+
+```bash
+cd "$HOME/apps/accounting-php81" &&
+export PATH="/opt/alt/php81/usr/bin:$PATH" &&
+git pull --ff-only origin compat/php81 &&
+bash scripts/upgrade-office.sh &&
+bash scripts/promote-admin.sh rawah@midnighttravel.net
+```
+
+To promote an existing staff login with its current password, run `php artisan staff:promote EMAIL --keep-password` from the private hosting terminal.
+
+Admin can open the control panel to configure companies, branches, currency precision, dated rates, financial accounts, credit limits, staff logins, branch assignments, employee salary terms and leave. Create a bank or safe before posting cash movements. Set foreign rates as **source currency units per one reporting currency unit**. Company reporting currency is shared by its branches. Record verified opening balances and their dates through the posting form.
+
+Open a branch to enter transactions, preview the signed journal movements and confirm. Use a related document number for partial settlement at historic carrying value. Unlinked receipts and payments are account-level credits. Reissues take incremental selling price and supplier cost. Refunds create independent credit documents; settle them with customer/supplier refund payments. Voids create reversing entries. Reversing a linked chain starts with the most recent dependent document. Debits are positive and credits negative in ledgers. Sales and supplier costs are posted separately. Posting retains the rates used. Payroll takes gross salary plus allowances less deductions. Recovering an advance debits accrued salary and credits staff advances.
+
+The dashboard and group overview show cumulative posted amounts. Management reports use the chosen date range for profit and cash movements and an end date for balances. Filter the ledger by account for a printable statement, or open a document for a receipt. Print to PDF, export CSV, or open the XML workbook in Excel. Accounts with foreign currency exposure are reported at carrying value. Group totals are split by reporting currency.
+
+Users with the viewer role can read their assigned branch. Cashiers can record routine branch transactions or submit a request for approval. Admin can manage access, approve requests, reverse documents, close periods, and access all branches. Only the private terminal command grants global admin. Financial documents and journal lines are append-only in the app. The control panel shows the latest audit events.
+
+To test restore, restore the private snapshot to a **new private file**, point a separate installation's DB_DATABASE at it, and run integrity and ledger checks. For rollback, record the pre-update commit before pulling. Roll the code back to that revision and retain the upgraded database for investigation. The new tables are additive. Restoring an older database discards later entries and requires a maintenance window and explicit approval. Keep private copies of the environment file, application key and database backups together under controlled access.
+
+Run `php tests/books.php`, `php tests/treasury.php`, and `python3 tests/staff_http.py` using the target PHP CLI. Acceptance data is synthetic. Confirm local payroll rules, reporting periods, balances and the preferred refund workflow with the accountant before entering live financial records.
+
+Open customer or supplier credits can be matched against invoices on the dashboard. Enter an amount in account currency. Matching across historical rates books realized FX. Removing an allocation records its cancellation and reverses its FX document. Each branch can set a unique printable document prefix and sequence. The internal D-number remains a stable link for allocations and reversals.
+
+The control panel supports customer and supplier credit limits, supplier and bank statement reconciliation, scheduled creditor installments, salary terms and leave decisions. Group overview aggregates only like reporting currencies. Scheduled rates are manual. Ticket entry is manual. Live GDS importing and dedicated BSP settlement are outside the agreed v5 brief. Run `python3 tests/upgrade.py` for a synthetic legacy upgrade, verified backup restore, promotion, and concurrent retry check.
