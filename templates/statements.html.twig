@@ -1,11 +1,11 @@
 {% extends 'layout.html.twig' %}
-{% set title=info.name~' management reports' %}
-{% block content %}<nav><a href="{{ path('office',{branch:branch,section:'dashboard'}) }}">Branch dashboard</a><a href="{{ path('office',{branch:branch,section:'report'}) }}">General ledger</a></nav>
-<p>{{ info.company }} · {{ info.base }} · {{ from }} to {{ to }}</p>
-<form class="grid"><label>From<input name="from" type="date" value="{{ from }}"></label><label>Through<input name="to" type="date" value="{{ to }}"></label><label>Profitability by<select name="group">{% for g in ['service','airline','employee','customer','supplier'] %}<option {{ report.group==g?'selected' }}>{{ g }}</option>{% endfor %}</select></label><button>Run report</button></form>
-<button onclick="window.print()">Print / save PDF</button>
-<h2>Profit and loss</h2>{% for account,value in report.profit %}<p>{{ names[account] }} · {{ value }}</p>{% else %}<p>No income or expenses in this period.</p>{% endfor %}
-<h2>Profitability by {{ report.group }}</h2><div class="scroll"><table><tr><th>{{ report.group|capitalize }}</th><th>Sales</th><th>Supplier cost</th><th>Gross profit</th></tr>{% for r in report.performance %}<tr><td>{{ r.label }}</td><td>{{ r.sales }}</td><td>{{ r.cost }}</td><td>{{ r.margin }}</td></tr>{% endfor %}</table></div>
-<h2>Balance sheet at {{ to }}</h2><div class="grid">{% for label,value in report.sheet %}<p>{{ label }} · {{ value }}</p>{% endfor %}</div>
-<h2>Cash movements</h2>{% for r in report.flows %}<p>{{ r.kind|replace({'_':' '})|capitalize }} · {{ r.amount }}</p>{% else %}<p>No cash movements in this period.</p>{% endfor %}
-<h2>Currency exposure at {{ to }}</h2><div class="scroll"><table><tr><th>Currency</th><th>Net position</th><th>Carrying value ({{ info.base }})</th></tr>{% for r in report.exposure %}<tr><td>{{ r.currency }}</td><td>{{ r.native }}</td><td>{{ r.base }}</td></tr>{% endfor %}</table></div>{% endblock %}
+{% set title=('Management reports'|ui)~' · '~info.name %}
+{% block content %}<nav><a href="{{ path('office',{branch:branch,section:'dashboard'}) }}">{{ 'Branch dashboard'|ui }}</a><a href="{{ path('office',{branch:branch,section:'report'}) }}">{{ 'General ledger'|ui }}</a></nav>
+<p>{{ info.company }} · <bdi>{{ info.base }}</bdi> · {{ from }} {{ 'to'|ui }} {{ to }}</p>
+<form class="grid"><label>{{ 'From'|ui }}<input name="from" type="date" value="{{ from }}"></label><label>{{ 'Through'|ui }}<input name="to" type="date" value="{{ to }}"></label><label>{{ 'Profitability by'|ui }}<select name="group">{% for g in ['service','airline','employee','customer','supplier'] %}<option value="{{ g }}" {{ report.group==g?'selected' }}>{{ (g)|ui }}</option>{% endfor %}</select></label><button>{{ 'Run report'|ui }}</button></form>
+<button onclick="window.print()">{{ 'Print / save PDF'|ui }}</button>
+<h2>{{ 'Profit and loss'|ui }}</h2>{% for account,value in report.profit %}<p>{{ names[account] }} · {{ value }}</p>{% else %}<p>{{ 'No income or expenses in this period.'|ui }}</p>{% endfor %}
+<h2>{{ 'Profitability by'|ui }} {{ (report.group)|ui }}</h2><div class="scroll"><table><tr><th>{{ (report.group|capitalize)|ui }}</th><th>{{ 'Sales'|ui }}</th><th>{{ 'Supplier cost'|ui }}</th><th>{{ 'Gross profit'|ui }}</th></tr>{% for r in report.performance %}<tr><td>{{ report.group in ['airline','customer','supplier','employee'] and r.label!='Unspecified' ? r.label : r.label|ui }}</td><td><bdi>{{ r.sales }}</bdi></td><td><bdi>{{ r.cost }}</bdi></td><td><bdi>{{ r.margin }}</bdi></td></tr>{% endfor %}</table></div>
+<h2>{{ 'Balance sheet at'|ui }} {{ to }}</h2><div class="grid">{% for label,value in report.sheet %}<p>{{ (label)|ui }} · {{ value }}</p>{% endfor %}</div>
+<h2>{{ 'Cash movements'|ui }}</h2>{% for r in report.flows %}<p>{{ (r.kind|replace({'_':' '})|capitalize)|ui }} · {{ r.amount }}</p>{% else %}<p>{{ 'No cash movements in this period.'|ui }}</p>{% endfor %}
+<h2>{{ 'Currency exposure at'|ui }} {{ to }}</h2><div class="scroll"><table><tr><th>{{ 'Currency'|ui }}</th><th>{{ 'Net position'|ui }}</th><th>{{ 'Carrying value ('|ui }}<bdi>{{ info.base }}</bdi>)</th></tr>{% for r in report.exposure %}<tr><td><bdi>{{ r.currency }}</bdi></td><td>{{ r.native }}</td><td>{{ r.base }}</td></tr>{% endfor %}</table></div>{% endblock %}

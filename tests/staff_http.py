@@ -131,6 +131,15 @@ with tempfile.TemporaryDirectory() as temp:
         assert conn.execute("SELECT label FROM document_numbers").fetchone()==("MT-000100",)
         call("/branches/1/office/statements?group=customer&from=2026-01-01&to=2026-12-31")
         print("PASS allocations, cancellations, management report, approval, workbook and document numbering")
+        ar = call("/branches/1/office/dashboard?lang=ar")
+        assert 'lang="ar" dir="rtl"' in ar and 'تسجيل عملية بيع' in ar
+        assert 'تحصيل دفعة من عميل' in call("/branches/1/office/dashboard")
+        form_ar = call("/branches/1/office/post?task=sale")
+        assert 'سعر البيع' in form_ar and 'name="kind" value="sale"' in form_ar
+        assert 'لوحة الإدارة' in call("/control")
+        assert 'القيمة' in call("/branches/1/office/statements")
+        assert 'lang="en" dir="ltr"' in call("/?lang=en")
+        print("PASS language switch, persistence, RTL reports and stable transaction codes")
         print("PASS administrator access, setup, posting preview, confirmation, report and CSV")
         print("PASS staff login, logout, branch isolation, viewer restrictions, cashier posting, CSRF, retry and revocation")
     finally:

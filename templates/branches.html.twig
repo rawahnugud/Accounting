@@ -6,9 +6,9 @@
 <a class="branch-link" href="{{ path('office',{branch:branch.id,section:'dashboard'}) }}">
 <span class="branch-mark" aria-hidden="true">{{ branch.name|slice(0,1)|upper }}</span>
 <span class="branch-name"><strong>{{ branch.name }}</strong><span>{{ branch.company }}</span></span>
-<span class="role">{{ branch.role|capitalize }}</span>
-<span class="open-branch">Open branch <span aria-hidden="true">→</span></span>
+<span class="role">{{ (branch.role|capitalize)|ui }}</span>
+<span class="open-branch">{{ 'Open branch'|ui }} <span aria-hidden="true">→</span></span>
 </a>
-{% else %}<p>No branch assigned. Contact your accounting administrator.</p>{% endfor %}
+{% else %}<p>{{ 'No branch assigned. Contact your accounting administrator.'|ui }}</p>{% endfor %}
 </div>
 {% endblock %}

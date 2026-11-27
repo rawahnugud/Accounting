@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Accounting\Amounts;
+use App\Language;
 use App\Accounting\Books;
 use App\Accounting\Reports;
 use DomainException;
@@ -15,7 +16,7 @@ use Symfony\Component\Uid\Uuid;
 
 final class OfficeController extends AbstractController
 {
-    public function __construct(private PDO $db) {}
+    public function __construct(private PDO $db, private Language $language) {}
 
     private function rows(string $sql,array $args=[]): array
     {
@@ -358,10 +359,11 @@ final class OfficeController extends AbstractController
         $parties=$this->rows('SELECT * FROM parties WHERE branch_id=? ORDER BY kind,name',[$branch]);
         $cash=$this->rows('SELECT * FROM cash_accounts WHERE branch_id=? ORDER BY name',[$branch]);
         $names=['sales'=>'Sales revenue','service_cost'=>'Supplier costs','salary_expense'=>'Payroll expense','expense'=>'Other expenses','equity'=>'Owner equity','fx'=>'Exchange differences'];
+        $names=array_map([$this->language,'label'],$names);
         foreach ($cash as $a) { $names['cash:'.$a['id']]=$a['name']; }
         foreach ($parties as $a) {
-            $names[$a['kind'].':'.$a['id']]=$a['name'].' ('.$a['kind'].')';
-            if ($a['kind']==='employee') { $names['advance:'.$a['id']]=$a['name'].' (advance)'; }
+            $names[$a['kind'].':'.$a['id']]=$a['name'].' ('.$this->language->label($a['kind']).')';
+            if ($a['kind']==='employee') { $names['advance:'.$a['id']]=$a['name'].' ('.$this->language->label('Advance').')'; }
         }
         $query=$r->query;
         if ($section==='statements') {
@@ -413,16 +415,16 @@ final class OfficeController extends AbstractController
                 }
                 $data.='</Row>';
             };
-            $write(['Date','Document','Operation','Reference','Account','Currency','Native movement','Reporting movement']);
-            foreach ($lines as $l) { $write([$l['day'],$l['number'],$l['kind'],$l['reference'],$l['name'],$l['currency'],$l['amount'],$l['report']],true); }
+            $write(array_map([$this->language,'label'],['Date','Document','Operation','Reference','Account','Currency','Native movement','Reporting movement']));
+            foreach ($lines as $l) { $write([$l['day'],$l['number'],$this->language->label(Books::TYPES[$l['kind']] ?? ucfirst(str_replace('_',' ',$l['kind']))),$l['reference'],$l['name'],$l['currency'],$l['amount'],$l['report']],true); }
             return new Response($data.'</Table></Worksheet></Workbook>',200,['Content-Type'=>'application/vnd.ms-excel','Content-Disposition'=>'attachment; filename="accounting-ledger.xml"']);
         }
         if ($section==='export') {
             $file=fopen('php://temp','w+');
-            fputcsv($file,['Date','Document','Operation','Reference','Account','Currency','Account movement','Reporting movement']);
+            fputcsv($file,array_map([$this->language,'label'],['Date','Document','Operation','Reference','Account','Currency','Account movement','Reporting movement']));
             foreach ($lines as $l) {
                 $safe=static fn($v)=>preg_match('/^[\s]*[=+@-]/',$v)?"'".$v:$v;
-                fputcsv($file,[$l['day'],$l['number'],$l['kind'],$safe($l['reference']),$safe($l['name']),$l['currency'],$l['amount'],$l['report']]);
+                fputcsv($file,[$l['day'],$l['number'],$this->language->label(Books::TYPES[$l['kind']] ?? ucfirst(str_replace('_',' ',$l['kind']))),$safe($l['reference']),$safe($l['name']),$l['currency'],$l['amount'],$l['report']]);
             }
             rewind($file);
             return new Response(stream_get_contents($file),200,['Content-Type'=>'text/csv; charset=utf-8','Content-Disposition'=>'attachment; filename="ledger.csv"']);

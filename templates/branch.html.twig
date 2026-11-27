@@ -1,19 +1,19 @@
 {% extends 'layout.html.twig' %}
 {% set title = assignment.name %}
 {% block content %}
-<a href="{{ path('home') }}">Your branches</a>
-<h2>Bank and safe accounts</h2><p>{{ assignment.company }} · {{ assignment.reporting_currency }}</p>
-<ul>{% for account in accounts %}<li>{{ account.name }} ({{ account.kind }})</li>{% else %}<li>No accounts in this currency.</li>{% endfor %}</ul>
+<a href="{{ path('home') }}">{{ 'Your branches'|ui }}</a>
+<h2>{{ 'Bank and safe accounts'|ui }}</h2><p>{{ assignment.company }} · {{ assignment.reporting_currency }}</p>
+<ul>{% for account in accounts %}<li>{{ account.name }} ({{ (account.kind)|ui }})</li>{% else %}<li>{{ 'No accounts in this currency.'|ui }}</li>{% endfor %}</ul>
 {% if assignment.role == 'cashier' and accounts|length >= 2 %}
-<h2>Record a transfer</h2>
+<h2>{{ 'Record a transfer'|ui }}</h2>
 <form method="post" action="{{ path('transfer', {branch: assignment.id}) }}">{{ include('csrf.html.twig') }}
 <input type="hidden" name="request_key" value="{{ request_key }}">
 {% for field, label in {source:'From account', destination:'To account'} %}
-<p><label for="{{ field }}">{{ label }}</label><select id="{{ field }}" name="{{ field }}" required>
-<option value="">Select an account</option>
+<p><label for="{{ field }}">{{ (label)|ui }}</label><select id="{{ field }}" name="{{ field }}" required>
+<option value="">{{ 'Select an account'|ui }}</option>
 {% for account in accounts %}<option value="{{ account.id }}" {{ old[field]|default('') == account.id ? 'selected' : '' }}>{{ account.name }}</option>{% endfor %}
 </select></p>{% endfor %}
-<p><label for="amount">Amount ({{ assignment.reporting_currency }})</label>
+<p><label for="amount">{{ 'Amount ('|ui }}{{ assignment.reporting_currency }})</label>
 <input id="amount" name="amount" inputmode="decimal" value="{{ old.amount|default('') }}" required></p>
-<button>Record transfer</button></form>{% endif %}
+<button>{{ 'Record transfer'|ui }}</button></form>{% endif %}
 {% endblock %}
