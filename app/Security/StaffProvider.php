@@ -16,13 +16,13 @@ final class StaffProvider implements UserProviderInterface
 
     public function loadUserByIdentifier(string $identifier): InMemoryUser
     {
-        $query = $this->db->prepare('SELECT email, password FROM users WHERE email = ?');
+        $query = $this->db->prepare('SELECT email, password, is_admin FROM users WHERE email = ?');
         $query->execute([$identifier]);
         $row = $query->fetch();
         if (!$row) {
             throw new UserNotFoundException();
         }
-        return new InMemoryUser($row['email'], $row['password'], ['ROLE_STAFF']);
+        return new InMemoryUser($row['email'], $row['password'], $row['is_admin'] ? ['ROLE_STAFF', 'ROLE_ADMIN'] : ['ROLE_STAFF']);
     }
 
     public function refreshUser(UserInterface $user): InMemoryUser

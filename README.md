@@ -20,8 +20,36 @@ After READY, change the Accounts document root to `apps/accounting-php81/public`
 
 Install the locked dependencies with `composer install`. Copy `.env.example` to `.env` and set a private random APP_KEY, or reuse an existing Accounting key. Generate a fresh value with `php -r 'echo "base64:".base64_encode(random_bytes(32)), PHP_EOL;'`. Set DB_DATABASE to the absolute path to the Accounting SQLite file, and create that empty file. Run `php artisan migrate`. For local development only, start `php -S 127.0.0.1:8000 -t public public/index.php`.
 
-Once a company and branch are provisioned, run `php artisan staff:assign staff@example.test 1 cashier` with the actual email and branch ID. New staff are prompted for a name and password. The viewer role grants read access. Branch, account and opening balance setup screens remain pending.
+Once a company and branch are provisioned, run `php artisan staff:assign staff@example.test 1 cashier` with the actual email and branch ID. New staff are prompted for a name and password. The viewer role grants read access. Use the administrator control panel and branch posting screen for further setup.
 
 ## Verification and scope
 
-`php tests/treasury.php` checks posting, amount precision, tenancy and retries. `python3 tests/staff_http.py` exercises authentication, branch authorization, transfers, CSRF and revocation against temporary data. The three migration names and existing SQLite records are compatible with the Laravel build. Cross-currency journals, customer/supplier ledgers, ticket operations and other full-system features remain pending.
+`php tests/treasury.php` checks posting, amount precision, tenancy and retries. `python3 tests/staff_http.py` exercises authentication, branch authorization, transfers, CSRF and revocation against temporary data. The three migration names and existing SQLite records are compatible with the Laravel build. The office upgrade below adds accounting workflows using a fourth, additive migration.
+
+## Accounting office upgrade on cPanel
+
+In the active PHP 8.1 release run the following. The upgrade creates a consistent, integrity-checked SQLite snapshot outside the web root before applying pending migrations. Supply the email of the existing owner login explicitly. Promotion requests a new password with terminal echo disabled and invalidates old login sessions when they next refresh.
+
+```bash
+cd "$HOME/apps/accounting-php81" &&
+export PATH="/opt/alt/php81/usr/bin:$PATH" &&
+git pull --ff-only origin compat/php81 &&
+bash scripts/upgrade-office.sh &&
+bash scripts/promote-admin.sh rawah@midnighttravel.net
+```
+
+Admin can open the control panel to configure companies, branches, currency precision, dated rates, financial accounts, credit limits, staff logins, branch assignments, employee salary terms and leave. Create a bank or safe before posting cash movements. Set foreign rates as **source currency units per one reporting currency unit**. Company reporting currency is shared by its branches. Record verified opening balances and their dates through the posting form.
+
+Open a branch to enter transactions, preview the signed journal movements and confirm. Use a related document number for partial settlement at historic carrying value. Unlinked receipts and payments are account-level credits. Reissues take incremental selling price and supplier cost. Refunds create independent credit documents; settle them with customer/supplier refund payments. Voids create reversing entries. Reversing a linked chain starts with the most recent dependent document. Debits are positive and credits negative in ledgers. Sales and supplier costs are posted separately. Posting retains the rates used. Payroll takes gross salary plus allowances less deductions. Recovering an advance debits accrued salary and credits staff advances.
+
+The dashboard and group overview show cumulative posted amounts. Management reports use the chosen date range for profit and cash movements and an end date for balances. Filter the ledger by account for a printable statement, or open a document for a receipt. Print to PDF, export CSV, or open the XML workbook in Excel. Accounts with foreign currency exposure are reported at carrying value. Group totals are split by reporting currency.
+
+Users with the viewer role can read their assigned branch. Cashiers can record routine branch transactions or submit a request for approval. Admin can manage access, approve requests, reverse documents, close periods, and access all branches. Only the private terminal command grants global admin. Financial documents and journal lines are append-only in the app. The control panel shows the latest audit events.
+
+To test restore, restore the private snapshot to a **new private file**, point a separate installation's DB_DATABASE at it, and run integrity and ledger checks. For rollback, record the pre-update commit before pulling. Roll the code back to that revision and retain the upgraded database for investigation. The new tables are additive. Restoring an older database discards later entries and requires a maintenance window and explicit approval. Keep private copies of the environment file, application key and database backups together under controlled access.
+
+Run `php tests/books.php`, `php tests/treasury.php`, and `python3 tests/staff_http.py` using the target PHP CLI. Acceptance data is synthetic. Confirm local payroll rules, reporting periods, balances and the preferred refund workflow with the accountant before entering live financial records.
+
+Open customer or supplier credits can be matched against invoices on the dashboard. Enter an amount in account currency. Matching across historical rates books realized FX. Removing an allocation records its cancellation and reverses its FX document. Each branch can set a unique printable document prefix and sequence. The internal D-number remains a stable link for allocations and reversals.
+
+The control panel supports customer and supplier credit limits, supplier and bank statement reconciliation, scheduled creditor installments, salary terms and leave decisions. Group overview aggregates only like reporting currencies. Scheduled rates are manual. Ticket entry is manual. Live GDS importing and dedicated BSP settlement are outside the agreed v5 brief. Run `python3 tests/upgrade.py` for a synthetic legacy upgrade, verified backup restore, promotion, and concurrent retry check.

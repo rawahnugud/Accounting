@@ -41,6 +41,10 @@ final class StaffTreasuryController extends AbstractController
             FROM branch_staff s JOIN users u ON u.id = s.user_id
             JOIN branches b ON b.id = s.branch_id AND b.company_id = s.company_id
             JOIN companies c ON c.id = s.company_id WHERE u.email = ?';
+        if ($this->isGranted('ROLE_ADMIN')) {
+            $sql = "SELECT u.id AS user_id,b.company_id,'admin' AS role,b.id,b.name,c.name AS company,c.reporting_currency
+                FROM branches b JOIN companies c ON c.id=b.company_id JOIN users u ON u.email=? AND u.is_admin=1 WHERE 1=1";
+        }
         $params = [$this->getUser()->getUserIdentifier()];
         if ($branch !== null) {
             $sql .= ' AND b.id = ?';

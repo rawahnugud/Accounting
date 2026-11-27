@@ -19,6 +19,7 @@ $cli->register('migrate')->setDescription('Apply pending Accounting schema migra
             '0001_01_01_000000_create_users_table' => '000_users.sql',
             '2026_11_22_000001_create_treasury' => '001_treasury.sql',
             '2026_11_22_000002_create_branch_staff' => '002_branch_staff.sql',
+            '2026_11_27_000003_operations' => '003_operations.sql',
         ];
         $db->exec('BEGIN IMMEDIATE');
         try {
@@ -83,6 +84,29 @@ $cli->register('staff:assign')->setDescription('Assign a staff member to a branc
             throw $error;
         }
         $io->success('Branch access saved.');
+        return 0;
+    });
+
+$cli->register('staff:promote')->setDescription('Promote an existing user with a fresh password read from standard input')
+    ->addArgument('email', InputArgument::REQUIRED)
+    ->setCode(function ($input, $output): int {
+        $password = stream_get_contents(STDIN);
+        if (strlen($password) < 12 || strlen($password) > 72 || str_contains($password, "\n")) {
+            throw new InvalidArgumentException('Supply a new 12 to 72 byte password using the promotion script.');
+        }
+        $db = Database::open();
+        $db->beginTransaction();
+        $query = $db->prepare('SELECT id,password FROM users WHERE email=?');
+        $query->execute([$input->getArgument('email')]);
+        $user = $query->fetch();
+        if (!$user || password_verify($password,$user['password'])) {
+            throw new InvalidArgumentException('Check the existing email and use a different password.');
+        }
+        $db->prepare('UPDATE users SET is_admin=1,password=?,updated_at=CURRENT_TIMESTAMP WHERE id=?')
+            ->execute([password_hash($password,PASSWORD_BCRYPT),$user['id']]);
+        $db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'admin granted','cPanel terminal')")->execute([$user['id']]);
+        $db->commit();
+        $output->writeln('Administrator access saved. Sign in with the new password.');
         return 0;
     });
 

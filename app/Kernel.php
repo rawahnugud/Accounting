@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App;
 
 use App\Http\Controllers\StaffTreasuryController as Staff;
+use App\Http\Controllers\OfficeController;
 use App\Security\StaffProvider;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
@@ -27,7 +28,7 @@ final class Kernel extends BaseKernel
     public function getCacheDir(): string
     {
         return ($_SERVER['LARAVEL_STORAGE_PATH'] ?? $this->getProjectDir().'/storage')
-            .'/framework/cache/symfony/'.$this->environment;
+            .'/framework/cache/symfony/office-v1/'.$this->environment;
     }
 
     protected function configureContainer(ContainerConfigurator $container): void
@@ -68,11 +69,20 @@ final class Kernel extends BaseKernel
         $services = $container->services()->defaults()->autowire()->autoconfigure();
         $services->set(\PDO::class, \PDO::class)->factory([Database::class, 'open']);
         $services->set(StaffProvider::class);
+        $services->set(OfficeController::class)->public();
         $services->set(Staff::class)->public();
     }
 
     protected function configureRoutes(RoutingConfigurator $routes): void
     {
+        $routes->add('match_items','/branches/{branch}/matches')->controller([OfficeController::class,'matchItems'])
+            ->requirements(['branch'=>'\d+'])->methods(['POST']);
+        $routes->add('decision','/branches/{branch}/requests/{id}')->controller([OfficeController::class,'decide'])
+            ->requirements(['branch'=>'\d+','id'=>'\d+'])->methods(['POST']);
+        $routes->add('overview','/overview')->controller([OfficeController::class,'overview'])->methods(['GET']);
+        $routes->add('control','/control')->controller([OfficeController::class,'control'])->methods(['GET','POST']);
+        $routes->add('office','/branches/{branch}/office/{section}')->controller([OfficeController::class,'office'])
+            ->requirements(['branch'=>'\d+','section'=>'dashboard|post|report|export|workbook|statements'])->methods(['GET','POST']);
         $routes->add('login', '/login')->controller([Staff::class, 'login'])->methods(['GET', 'POST']);
         $routes->add('logout', '/logout')->controller([Staff::class, 'logout'])->methods(['POST']);
         $routes->add('health', '/up')->controller([Staff::class, 'health'])->methods(['GET']);
