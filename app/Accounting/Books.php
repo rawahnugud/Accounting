@@ -40,8 +40,11 @@ final class Books
         $row=$this->one('SELECT c.reporting_currency AS base, n.decimals AS places, r.decimals AS base_places
             FROM branches b JOIN companies c ON c.id=b.company_id JOIN currencies r ON r.code=c.reporting_currency
             JOIN currencies n ON n.code=? WHERE b.id=?',[$currency,$this->branch]);
-        $rate=$currency===$row['base'] ? '1' : ($this->overrides[$currency] ?? $this->rows('SELECT rate FROM rates WHERE branch_id=? AND currency=? AND effective<=?
-            ORDER BY effective DESC LIMIT 1',[$this->branch,$currency,$day])[0]['rate'] ?? throw new DomainException("Set a rate for $currency on this date."));
+        // Latest rate on or before the day, preferring this branch over the company's other branches; otherwise the first later rate.
+        $rate=$currency===$row['base'] ? '1' : ($this->overrides[$currency] ?? $this->rows('SELECT r.rate FROM rates r JOIN branches b ON b.id=r.branch_id
+            JOIN branches me ON me.id=? AND me.company_id=b.company_id WHERE r.currency=?
+            ORDER BY r.effective>?, r.branch_id<>me.id, CASE WHEN r.effective<=? THEN r.effective END DESC, r.effective LIMIT 1',
+            [$this->branch,$currency,$day,$day])[0]['rate'] ?? throw new DomainException("No exchange rate for $currency yet. An administrator can add one in the control panel under Set exchange rate."));
         return $row+['rate'=>$rate];
     }
     private function convert(int $amount,array $rate,bool $toBase): int
