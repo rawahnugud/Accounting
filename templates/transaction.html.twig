@@ -22,6 +22,7 @@
 {% set linked=kind in ['reissue','refund','receipt','customer_refund','supplier_payment','supplier_refund','repayment','salary_payment','reverse'] %}
 <a href="{{ path('office',{branch:branch,section:'post'}) }}">{{ '← Choose a different task'|ui }}</a>
 <form class="card task-form" method="post">{{ include('csrf.html.twig') }}
+{% if f.amend|default(0) %}<h2>{{ 'Amend document'|ui }} D-{{ f.amend }}</h2><input type="hidden" name="amend" value="{{ f.amend }}"><label>{{ 'Reason for correction'|ui }}<input name="reason" required></label>{% endif %}
 <input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="request_key" value="{{ f.request_key|default(key) }}">
 {% if kind=='opening_party' %}<p>{{ 'Choose either a customer or a supplier.'|ui }}</p>{% endif %}
 <div class="grid">
@@ -50,7 +51,7 @@
 {% if travel %}<details {{ f.ticket|default('') or f.pnr|default('') or f.passenger|default('') or f.route|default('') or f.airline|default('')?'open' }}><summary>{{ 'Ticket and passenger details'|ui }}</summary><div class="grid">{% for k,label in {passenger:'Passenger name',pnr:'Booking reference (PNR)',ticket:'Ticket number',airline:'Airline',route:'Route'} %}<label>{{ (label)|ui }}<input name="{{ k }}" value="{{ f[k]|default('') }}"></label>{% endfor %}</div></details>
 <details {{ f.converted|default('') or f.override|default('')?'open' }}><summary>{{ 'Currency conversion'|ui }}</summary><label>{{ 'Converted amount in'|ui }} <bdi>{{ info.base }}</bdi><input name="converted" inputmode="decimal" value="{{ f.converted|default('') }}"></label>{% if info.role=='admin' %}<label>{{ 'Override rate (source units per'|ui }} <bdi>{{ info.base }}</bdi>)<input name="override" inputmode="decimal" value="{{ f.override|default('') }}"></label>{% endif %}</details>{% endif %}
 {% if kind=='payroll' %}<div class="grid">{% for k,label in {allowance:'Allowances',deduction:'Deductions'} %}<label>{{ (label)|ui }} {{ '(optional)'|ui }}<input name="{{ k }}" inputmode="decimal" value="{{ f[k]|default('') }}"></label>{% endfor %}</div>{% endif %}
-<details {{ f.due|default('') or f.note|default('')?'open' }}><summary>{{ 'Due date and notes'|ui }}</summary><label>{{ 'Due date'|ui }}<input type="date" name="due" value="{{ f.due|default('') }}"></label><label>{{ 'Notes'|ui }}<input name="note" value="{{ f.note|default('') }}"></label></details>
+<details {{ kind=='reverse' or f.due|default('') or f.note|default('')?'open' }}><summary>{{ 'Due date and notes'|ui }}</summary><label>{{ 'Due date'|ui }}<input type="date" name="due" value="{{ f.due|default('') }}"></label><label>{{ (kind=='reverse'?'Reason for voiding':'Notes')|ui }}<input name="note" {{ kind=='reverse'?'required' }} value="{{ f.note|default('') }}"></label></details>
 <button name="mode" value="save">{{ (kind=='sale'?'Save sale':'Save transaction')|ui }}</button>
 </form>
 {% if kind=='sale' %}

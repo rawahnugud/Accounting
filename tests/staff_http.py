@@ -195,6 +195,35 @@ with tempfile.TemporaryDirectory() as temp:
         assert 'القيمة' in call("/branches/1/office/statements")
         assert 'lang="en" dir="ltr"' in call("/?lang=en")
         print("PASS language switch, persistence, RTL reports and stable transaction codes")
+        # Correct the posted fee, then void its replacement. Failed retries leave one audit event.
+        fee=conn.execute("SELECT id FROM documents WHERE kind='fee'").fetchone()[0]
+        endpoint="/branches/1/office/post"
+        assert 'name="amend"' in call(endpoint+"?amend="+str(fee))
+        change=dict(_token=token,amend=fee,mode="save",day="2026-01-01",reason="Test typo",cash=1,amount="2")
+        call(endpoint,{**change,"amount":"invalid"})
+        assert not conn.execute("SELECT id FROM documents WHERE reversal_of=?",(fee,)).fetchone()
+        call(endpoint,change)
+        call(endpoint,change)
+        assert conn.execute("SELECT count(*) FROM audit_events WHERE action='Amend document'").fetchone()==(1,)
+        amended=conn.execute("SELECT max(id) FROM documents WHERE kind='fee'").fetchone()[0]
+        call(endpoint,dict(_token=token,amend=amended,mode="void",reason="Duplicate fee"))
+        assert conn.execute("SELECT sum(base_minor) FROM ledger WHERE account='expense'").fetchone()==(0,)
+        conn.execute("INSERT INTO documents(branch_id,user_id,kind,day,due,reference,details,request_key,fingerprint) VALUES(1,2,'legacy_ticket_cost','2026-01-02','2026-01-02','ARS','{}','import-1','test')")
+        legacy=conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.executemany("INSERT INTO entries(document_id,account,currency,native_minor,base_minor,rate) VALUES(?,?,'USD',?,?,'1')",[(legacy,'service_cost',500,500),(legacy,'supplier:2',-500,-500)])
+        conn.commit()
+        assert 'value="5.00"' in call("/branches/1/office/report?doc="+str(legacy))
+        call(endpoint,dict(_token=token,amend=legacy,mode="save",reason="Supplier correction",reference="ARS corrected",ticket="00123",amount="6.00"))
+        assert conn.execute("SELECT native_minor FROM entries JOIN documents ON documents.id=document_id WHERE reference='ARS corrected' AND account='supplier:2'").fetchone()==(-600,)
+        call("/control",dict(_token=token,action="party",branch=1,kind="customer",name="Typoo",currency="USD"))
+        party=conn.execute("SELECT id FROM parties WHERE name='Typoo'").fetchone()[0]
+        edit=dict(_token=token,directory="party",record=party,reason="Typo",name="Corrected",detail="Contact")
+        call("/control",dict(edit,action="Edit account"))
+        call("/control",dict(edit,action="Delete unused account"))
+        assert not conn.execute("SELECT id FROM parties WHERE id=?",(party,)).fetchone()
+        call("/control",dict(edit,action="Delete unused account",record=1))
+        assert conn.execute("SELECT id FROM parties WHERE id=1").fetchone()
+        print("PASS amendments, failed correction rollback, repeat submission, legacy amount, void, directory deletion and audit")
         print("PASS administrator access, setup, posting preview, confirmation, report and CSV")
         print("PASS staff login, logout, branch isolation, viewer restrictions, cashier posting, CSRF, retry and revocation")
     finally:

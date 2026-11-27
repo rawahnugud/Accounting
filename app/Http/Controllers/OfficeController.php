@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Accounting\Amounts;
+use App\Accounting\Corrections;
 use App\Accounting\AccountStatement;
 use App\Language;
 use App\Accounting\Books;
@@ -111,6 +112,36 @@ final class OfficeController extends AbstractController
             if (!$q->rowCount()) { throw new DomainException('Check the selected record.'); }
         };
         switch ($act) {
+        case 'Edit account':
+        case 'Delete unused account':
+            $bank=($f['directory'] ?? '')==='bank';
+            $table=$bank?'cash_accounts':'parties';
+            $id=(int)($f['record'] ?? 0);
+            $old=$this->rows("SELECT * FROM $table WHERE id=?",[$id])[0] ?? throw new DomainException('Check the selected record.');
+            $reason=$this->field($f,'reason');
+            $key=($bank?'cash':$old['kind']).':'.$id;
+            if ($act==='Edit account') {
+                $new=$this->field($f,'name');
+                if ($bank) { $run('UPDATE cash_accounts SET name=? WHERE id=?',[$new,$id]); }
+                else { $run('UPDATE parties SET name=?,detail=? WHERE id=?',[$new,$note,$id]); }
+                return json_encode(['account'=>$key,'before'=>$old,'name'=>$new,'detail'=>$bank?'':$note,'reason'=>$reason],JSON_UNESCAPED_UNICODE);
+            }
+            $keys=[$key,$old['kind']==='employee'?'advance:'.$id:$key];
+            if ($this->rows('SELECT 1 FROM ledger WHERE branch_id=? AND account IN (?,?) LIMIT 1',[$old['branch_id'],...$keys])
+                || $this->rows('SELECT 1 FROM statement_checks WHERE branch_id=? AND account IN (?,?) LIMIT 1',[$old['branch_id'],...$keys])) {
+                throw new DomainException('This account has recorded activity.');
+            }
+            $fields=$bank?['cash','destination']:[$old['kind']];
+            foreach ($this->rows("SELECT payload FROM requests WHERE branch_id=? AND state='pending'",[$old['branch_id']]) as $request) {
+                $draft=json_decode($request['payload'],true);
+                foreach ($fields as $field) { if ((int)($draft[$field] ?? 0)===$id) { throw new DomainException('This account has recorded activity.'); } }
+            }
+            if ($bank && $this->rows("SELECT 1 FROM sqlite_master WHERE type='table' AND name='imported_bank_details'")) {
+                $old['import']=$this->rows('SELECT * FROM imported_bank_details WHERE cash_id=?',[$id]);
+                $this->db->prepare('DELETE FROM imported_bank_details WHERE cash_id=?')->execute([$id]);
+            }
+            $run("DELETE FROM $table WHERE id=?",[$id]);
+            return json_encode(['account'=>$key,'removed'=>$old,'reason'=>$reason],JSON_UNESCAPED_UNICODE);
         case 'supplier reconciliation':
             $p=$this->rows("SELECT p.*,c.decimals FROM parties p JOIN currencies c ON c.code=p.currency WHERE p.id=? AND p.kind='supplier'",[$f['party']])[0] ?? throw new DomainException('Choose a supplier.');
             $day=Books::date($this->field($f,'day'));
@@ -316,6 +347,11 @@ final class OfficeController extends AbstractController
         $books=new Books($this->db,$branch,(int)$u['id']);
         $f=[]; $preview=null;
         if ($section==='post' && $info['role']==='viewer') { throw $this->createAccessDeniedException(); }
+        if ($section==='post' && $r->isMethod('GET') && $r->query->getInt('amend')) {
+            if (!$u['is_admin']) { throw $this->createAccessDeniedException(); }
+            try { $f=(new Corrections($this->db,$branch,(int)$u['id']))->form($r->query->getInt('amend')); }
+            catch (DomainException $e) { throw $this->createNotFoundException(); }
+        }
         if ($section==='post' && $r->isMethod('GET') && $r->query->getInt('draft')) {
             $draft=$this->rows("SELECT payload FROM requests WHERE branch_id=? AND id=? AND state='pending'
                 AND (requested_by=? OR CAST(? AS INTEGER)=1)",[$branch,$r->query->getInt('draft'),$u['id'],$u['is_admin']])[0] ?? throw $this->createNotFoundException();
@@ -327,10 +363,23 @@ final class OfficeController extends AbstractController
             $f=$r->request->all();
             if (array_filter($f,'is_array')) { throw new HttpException(422,'Invalid form fields.'); }
             $mode=$f['mode'] ?? '';
+            if (isset($f['amend'])) {
+                if (!$u['is_admin']) { throw $this->createAccessDeniedException(); }
+                if (!in_array($mode,['void','save'],true)) { throw new HttpException(422,'Invalid action.'); }
+                try {
+                    $newId=(new Corrections($this->db,$branch,(int)$u['id']))->save((int)$f['amend'],$f,$mode==='void');
+                    $this->addFlash('message','Correction recorded.');
+                    return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'report','doc'=>$newId]);
+                } catch (DomainException $e) {
+                    $this->addFlash('error',$e->getMessage());
+                    return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'report','doc'=>(int)$f['amend']]);
+                }
+            }
             if (!in_array($mode,['preview','confirm','edit','save'],true)) { throw new HttpException(422,'Choose a transaction action.'); }
             if ($mode!=='edit') {
                 $isPreview=($f['mode'] ?? '')==='preview';
                 try {
+                    if (($f['kind'] ?? '')==='reverse' && trim($f['note'] ?? '')==='') { throw new DomainException('Enter a correction reason (maximum 500 bytes).'); }
                     $result=$books->transact($f,$isPreview);
                     if (!$isPreview || $result['id']) {
                         $this->addFlash('message','Saved to the ledger.');
@@ -530,7 +579,7 @@ final class OfficeController extends AbstractController
         $metrics['Gross profit']=$metrics['Sales']-$metrics['Supplier costs'];
         $metrics['Cash after obligations']=$metrics['Cash']-$metrics['Supplier payables']-$metrics['Other obligations'];
         foreach ($metrics as &$v) { $v=Amounts::format($v,$prec[$info['base']]); } unset($v);
-        $doc=$query->getInt('doc') ? ($this->rows('SELECT d.*,u.name AS staff,n.label,cp.address,cp.contact,cp.registration FROM documents d JOIN users u ON u.id=d.user_id LEFT JOIN document_numbers n ON n.document_id=d.id JOIN branches b ON b.id=d.branch_id LEFT JOIN company_profiles cp ON cp.company_id=b.company_id WHERE d.branch_id=? AND d.id=?',[$branch,$query->getInt('doc')])[0] ?? null) : null;
+        $doc=$query->getInt('doc') ? ($this->rows('SELECT d.*,EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) AS voided,u.name AS staff,n.label,cp.address,cp.contact,cp.registration FROM documents d JOIN users u ON u.id=d.user_id LEFT JOIN document_numbers n ON n.document_id=d.id JOIN branches b ON b.id=d.branch_id LEFT JOIN company_profiles cp ON cp.company_id=b.company_id WHERE d.branch_id=? AND d.id=?',[$branch,$query->getInt('doc')])[0] ?? null) : null;
         $aging=$this->rows('SELECT * FROM open_items WHERE branch_id=? AND outstanding_minor<>0 ORDER BY due,id',[$branch]);
         foreach ($aging as &$item) { $item['amount']=Amounts::format($item['outstanding_minor'],$prec[$item['currency']]); } unset($item);
         $schedule=$this->rows("SELECT s.*,p.name,p.currency FROM schedules s JOIN documents d ON d.id=s.document_id JOIN entries e ON e.document_id=d.id
@@ -558,6 +607,10 @@ final class OfficeController extends AbstractController
         $services=$this->rows('SELECT name FROM service_categories ORDER BY name');
         $recs=$this->rows('SELECT r.*,a.name,a.currency,c.decimals FROM reconciliations r JOIN cash_accounts a ON a.id=r.cash_id JOIN currencies c ON c.code=a.currency WHERE a.branch_id=? ORDER BY r.day DESC',[$branch]);
         foreach ($recs as &$rec) { $rec['variance']=Amounts::format($rec['statement_minor']-$rec['ledger_minor'],$rec['decimals']); } unset($rec);
+        if ($doc && in_array($doc['kind'],Corrections::IMPORTS,true) ) {
+            $entry=$this->rows('SELECT native_minor FROM entries WHERE document_id=? ORDER BY id LIMIT 1',[$doc['id']]);
+            if ($entry) { $doc['import_amount']=Amounts::format(abs((int)$entry[0]['native_minor']),2); }
+        }
         if ($doc) { $doc['details']=json_decode($doc['details'],true); }
         foreach ($preview ?? [] as $i=>$e) {
             $preview[$i]['native']=Amounts::format($e['native'],$prec[$e['currency']]);

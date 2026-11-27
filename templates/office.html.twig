@@ -25,7 +25,18 @@
 {% elseif section=='post' %}
 {% include 'transaction.html.twig' %}
 {% else %}
-{% if doc %}{% if info.role!='viewer' %}<div class="actions"><a href="{{ path('office',{branch:branch,section:'post',task:'sale'}) }}">{{ 'Record another sale'|ui }}</a></div>{% endif %}{% if doc.label %}<h2>{{ doc.label }}</h2>{% endif %}<p>{{ doc.address }} {{ doc.contact }} {{ doc.registration }}</p><p>{{ (types[doc.kind]|default(doc.kind))|ui }} · {{ doc.reference }} · {{ doc.day }} · {{ doc.staff }}</p>{% if doc.kind in ['sale','reissue','refund'] %}<div class="sale-summary"><div>{{ 'Selling price'|ui }}<strong><bdi>{{ doc.details.amount }} {{ doc.details.source }}</bdi></strong></div><div>{{ 'Supplier cost'|ui }}<strong><bdi>{{ doc.details.cost|default('0') }} {{ doc.details.cost_currency }}</bdi></strong></div></div>{% endif %}
+{% if doc %}{% if doc.voided %}<p>{{ 'Voided'|ui }}</p>{% elseif info.role=='admin' and not doc.reversal_of and doc.kind!='allocation_fx' %}
+<details class="no-print"><summary>{{ 'Correct this document'|ui }}</summary>
+{% if doc.import_amount is defined %}
+<form method="post" action="{{ path('office',{branch:branch,section:'post'}) }}">{{ include('csrf.html.twig') }}<input type="hidden" name="amend" value="{{ doc.id }}">
+<label>{{ 'Amount'|ui }} (USD)<input name="amount" inputmode="decimal" required value="{{ doc.import_amount }}"></label>
+<label>{{ 'Reference'|ui }}<input name="reference" required value="{{ doc.reference }}"></label>
+<label>{{ 'Ticket number'|ui }}<input name="ticket" value="{{ doc.details.ticket|default('') }}"></label>
+<label>{{ 'Reason for correction'|ui }}<input name="reason" required></label><button name="mode" value="save">{{ 'Amend document'|ui }}</button></form>
+{% elseif doc.kind in types|keys %}<a href="{{ path('office',{branch:branch,section:'post',amend:doc.id}) }}">{{ 'Amend document'|ui }}</a>{% endif %}
+<form method="post" action="{{ path('office',{branch:branch,section:'post'}) }}">{{ include('csrf.html.twig') }}<input type="hidden" name="amend" value="{{ doc.id }}">
+<label>{{ 'Reason for voiding'|ui }}<input name="reason" required></label><button name="mode" value="void">{{ 'Void document'|ui }}</button></form>
+</details>{% endif %}{% if info.role!='viewer' %}<div class="actions"><a href="{{ path('office',{branch:branch,section:'post',task:'sale'}) }}">{{ 'Record another sale'|ui }}</a></div>{% endif %}{% if doc.label %}<h2>{{ doc.label }}</h2>{% endif %}<p>{{ doc.address }} {{ doc.contact }} {{ doc.registration }}</p><p>{{ (types[doc.kind]|default(doc.kind))|ui }} · {{ doc.reference }} · {{ doc.day }} · {{ doc.staff }}</p>{% if doc.kind in ['sale','reissue','refund'] %}<div class="sale-summary"><div>{{ 'Selling price'|ui }}<strong><bdi>{{ doc.details.amount }} {{ doc.details.source }}</bdi></strong></div><div>{{ 'Supplier cost'|ui }}<strong><bdi>{{ doc.details.cost|default('0') }} {{ doc.details.cost_currency }}</bdi></strong></div></div>{% endif %}
 {% for k,v in doc.details %}{% if v is not empty and (doc.kind not in ['sale','reissue','refund'] or k not in ['amount','source','cost','cost_currency']) %}<span>{{ (k|replace({'_':' '})|capitalize)|ui }}: {{ v }} &nbsp;</span>{% endif %}{% endfor %}
 {% else %}<form method="get" class="card"><div class="grid"><label>{{ 'From'|ui }}<input type="date" name="from" value="{{ app.request.query.get('from') }}"></label><label>{{ 'Through'|ui }}<input type="date" name="to" value="{{ app.request.query.get('to') }}"></label>
 <label>{{ 'Account or statement'|ui }}<select name="account"><option value="">{{ 'All accounts'|ui }}</option>{% for k,n in names %}<option value="{{ k }}" {{ app.request.query.get('account')==k?'selected' }}>{{ n }}</option>{% endfor %}</select></label>

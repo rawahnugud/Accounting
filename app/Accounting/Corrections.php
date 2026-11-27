@@ -1,0 +1,109 @@
+<?php
+declare(strict_types=1);
+namespace App\Accounting;
+
+use DomainException;
+use PDO;
+use Symfony\Component\Uid\Uuid;
+
+final class Corrections
+{
+    private Books $books;
+    public const IMPORTS=['legacy_ticket_cost','legacy_ticket_refund','legacy_supplier_payment','legacy_journal'];
+
+    public function __construct(private PDO $db, private int $branch, private int $actor)
+    {
+        $this->books=new Books($db,$branch,$actor);
+    }
+
+    private function original(int $id): array
+    {
+        $row=$this->books->rows('SELECT d.* FROM documents d JOIN users u ON u.id=? AND u.is_admin=1
+            WHERE d.id=? AND d.branch_id=? AND d.reversal_of IS NULL AND d.kind NOT IN (\'allocation_fx\',\'reverse\')
+            AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id)',[$this->actor,$id,$this->branch]);
+        return $row[0] ?? throw new DomainException('This document is unavailable for correction.');
+    }
+
+    public function form(int $id): array
+    {
+        $doc=$this->original($id);
+        $meta=json_decode($doc['details'],true,512,JSON_THROW_ON_ERROR);
+        $f=['kind'=>$doc['kind'],'day'=>$doc['day'],'due'=>$doc['due'],'reference'=>$doc['reference'],
+            'related'=>$doc['related_id'],'amend'=>$id,'currency'=>$meta['source'] ?? '']+$meta;
+        if (!empty($meta['override_by'])) { $f['override']=$meta['source_rate'] ?? ''; }
+        if ($doc['kind']==='payroll') { $f['amount']=$meta['salary'] ?? ''; }
+        foreach ($this->books->rows('SELECT account,native_minor FROM entries WHERE document_id=? ORDER BY id',[$id]) as $line) {
+            $parts=explode(':',$line['account'],2);
+            if (count($parts)!==2) { continue; }
+            [$field,$value]=$parts;
+            if ($field==='cash' && $doc['kind']==='transfer' && $line['native_minor']>0) { $field='destination'; }
+            if ($field==='advance') { $field='employee'; }
+            $f[$field]=$value;
+        }
+        return $f;
+    }
+
+    public function save(int $id,array $f,bool $void): int
+    {
+        $reason=trim($f['reason'] ?? '');
+        if ($reason==='' || strlen($reason)>500) { throw new DomainException('Enter a correction reason (maximum 500 bytes).'); }
+        $this->db->exec('BEGIN IMMEDIATE');
+        try {
+            $doc=$this->original($id);
+            $reversal=$this->books->postWithinTransaction(['kind'=>'reverse','related'=>$id,'day'=>$doc['day'],
+                'reference'=>"Void D-$id",'note'=>$reason,'request_key'=>(string)Uuid::v4()])['id'];
+            $result=$reversal;
+            $detail="D-$id; reversal D-$reversal";
+            if (!$void) {
+                if (in_array($doc['kind'],self::IMPORTS,true)) {
+                    $result=$this->replaceImport($doc,$f);
+                } else {
+                    $f['kind']=$doc['kind'];
+                    $f['request_key']=(string)Uuid::v4();
+                    $result=$this->books->postWithinTransaction($f)['id'];
+                }
+                $detail.="; replacement D-$result";
+            }
+            if (!$void) {
+                $this->db->prepare('UPDATE schedules SET document_id=? WHERE document_id=?')->execute([$result,$id]);
+                $planned=$this->books->rows('SELECT sum(amount_minor) AS total FROM schedules WHERE document_id=?',[$result])[0]['total'];
+                if ($planned && !$this->books->rows("SELECT id FROM open_items WHERE id=? AND kind='liability' AND abs(original_minor)>=CAST(? AS INTEGER)",[$result,(int)$planned])) {
+                    throw new DomainException('Installments exceed original obligation.');
+                }
+            }
+            $this->db->prepare('INSERT INTO audit_events(user_id,action,detail) VALUES(?,?,?)')
+                ->execute([$this->actor,$void?'Void document':'Amend document',$detail.' · '.$reason]);
+            $this->db->exec('COMMIT');
+            return $result;
+        } catch (\Throwable $e) {
+            $this->db->exec('ROLLBACK');
+            throw $e;
+        }
+    }
+
+    private function replaceImport(array $doc,array $f): int
+    {
+        $lines=$this->books->rows('SELECT * FROM entries WHERE document_id=? ORDER BY id',[$doc['id']]);
+        $amount=Amounts::parse(trim($f['amount'] ?? ''),2);
+        $ref=trim($f['reference'] ?? '');
+        $ticket=trim($f['ticket'] ?? '');
+        if (!$amount || $ref==='' || strlen($ref)>160 || strlen($ticket)>100 || count($lines)!==2
+            || $lines[0]['native_minor']!=-$lines[1]['native_minor']) { throw new DomainException('Check the amount and reference.'); }
+        $meta=json_decode($doc['details'],true,512,JSON_THROW_ON_ERROR);
+        $meta['ticket']=$ticket;
+        $meta['corrects_document']=$doc['id'];
+        $key=(string)Uuid::v4();
+        $this->db->prepare('INSERT INTO documents(branch_id,user_id,kind,day,due,reference,details,request_key,fingerprint) VALUES(?,?,?,?,?,?,?,?,?)')
+            ->execute([$this->branch,$this->actor,$doc['kind'],$doc['day'],$doc['due'],$ref,json_encode($meta,JSON_THROW_ON_ERROR),$key,hash('sha256',$key)]);
+        $id=(int)$this->db->lastInsertId();
+        $insert=$this->db->prepare("INSERT INTO entries(document_id,account,currency,native_minor,base_minor,rate) VALUES(?,?,'USD',?,?,'1')");
+        foreach ($lines as $line) {
+            if ($line['currency']!=='USD' || $line['rate']!=='1' || !$line['native_minor'] || $line['native_minor']!=$line['base_minor']) {
+                throw new DomainException('This import needs manual reconciliation.');
+            }
+            $signed=$line['native_minor']>0?$amount:-$amount;
+            $insert->execute([$id,$line['account'],$signed,$signed]);
+        }
+        return $id;
+    }
+}

@@ -307,7 +307,9 @@ final class Books
         $id=(int)$this->db->lastInsertId();
         $insert=$this->db->prepare('INSERT INTO entries(document_id,account,currency,native_minor,base_minor,rate) VALUES (?,?,?,?,?,?)');
         foreach ($lines as $e) { $insert->execute([$id,...array_values($e)]); }
-        $this->db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'post',?)")->execute([$this->actor,"D-$id $kind"]);
+        $auditDetail="D-$id $kind";
+        if ($kind==='reverse') { $auditDetail.=" · D-$related · ".$meta['note']; }
+        $this->db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'post',?)")->execute([$this->actor,$auditDetail]);
         if ($draft) {
             $this->db->prepare("UPDATE requests SET state='posted', decision_by=?, document_id=? WHERE id=? AND state='pending'")
                 ->execute([$this->actor, $id, $draft['id']]);
