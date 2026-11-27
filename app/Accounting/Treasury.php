@@ -80,9 +80,10 @@ final class Treasury
     private function record(array $values): int
     {
         $insert = $this->db->prepare('INSERT INTO treasury_transfers
-            (company_id, branch_id, source_id, destination_id, currency, amount_minor, request_key, actor)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(company_id, request_key) DO NOTHING');
-        $insert->execute($values);
+            (company_id, branch_id, source_id, destination_id, currency, amount_minor, request_key, actor, posted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(company_id, request_key) DO NOTHING');
+        // Local time, so the ledger day and period-close check match the office's date.
+        $insert->execute([...$values, date('Y-m-d H:i:s')]);
 
         // Both a fresh submission and an identical retry resolve to the same immutable row.
         $find = $this->db->prepare('SELECT id FROM treasury_transfers WHERE company_id = ?
