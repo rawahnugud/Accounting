@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory() as temp:
                                      input=password.encode()).decode()
     conn = sqlite3.connect(db)
     conn.executescript("""
-        INSERT INTO currencies VALUES ('USD',2);
+
         INSERT INTO companies VALUES (1,'Example','USD');
         INSERT INTO branches VALUES (1,1,'Main'),(2,1,'Other');
         INSERT INTO cash_accounts VALUES (1,1,1,'Bank','bank','USD'),(2,1,1,'Safe','safe','USD');
@@ -143,8 +143,16 @@ with tempfile.TemporaryDirectory() as temp:
         assert conn.execute("SELECT SUM(base_minor) FROM entries WHERE document_id=?",(doc,)).fetchone()==(0,)
         assert conn.execute("SELECT -SUM(base_minor) FROM entries WHERE account IN ('sales','service_cost') AND document_id=?",(doc,)).fetchone()==(7600,)
         assert "76.00" in call("/")
-        call("/control",dict(_token=token,action="currency",branch=1,code="SDG",precision="2",initial_rate="2000"))
-        assert conn.execute("SELECT rate FROM rates WHERE currency='SDG'").fetchone()==("2000",)
+        statement_url="/branches/1/office/report?view=statement&account=customer:1&from=2026-11-01&to=2026-11-30"
+        customer_copy=call(statement_url)
+        assert "Closing balance" in customer_copy and "586.25" in customer_copy
+        assert "Supplier One" not in customer_copy.split('<article class="statement-paper">',1)[1].split('</article>',1)[0]
+        assert "Closing balance" in call(statement_url+"&download=csv")
+        call(statement_url,dict(_token=token,external="580",side="Dr"))
+        assert conn.execute("SELECT external_minor-ledger_minor FROM statement_checks").fetchone()==(-625,)
+        call(statement_url.replace("customer:1","customer:999999"),status=404)
+        call("/control",dict(_token=token,action="currency",branch=1,code="GBP",precision="2",initial_rate="2000"))
+        assert conn.execute("SELECT rate FROM rates WHERE currency='GBP'").fetchone()==("2000",)
         call("/control",dict(_token=token,action="user",name="New staff",email="new@example.test",password=password,branch=1,role="cashier",salary_currency="USD"))
         assert conn.execute("SELECT p.name FROM employee_logins l JOIN parties p ON p.id=l.employee_id").fetchone()==("New staff",)
         call("/control",dict(_token=token,action="numbering",branch=1,prefix="MT",next="100"))

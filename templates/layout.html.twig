@@ -5,7 +5,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#85144b">
 <title>{{ title|ui }} · {{ 'Midnight Travel Accounting'|ui }}</title>
-<link rel="stylesheet" href="{{ app.request.basePath }}/assets/accounting.css?v=4">
+<link rel="stylesheet" href="{{ app.request.basePath }}/assets/accounting.css?v=5">
 </head>
 <body class="{{ app.user ? 'staff' : 'guest' }}">
 <a class="skip" href="#workspace">{{ 'Skip to content'|ui }}</a>
@@ -17,8 +17,9 @@
 {% endfor %}</nav>
 {% if branch is defined and info is defined %}
 <nav class="primary branch-nav" aria-label="{{ 'Branch navigation'|ui }}">
-{% for page,label in {'post':'Record transaction','report':'Ledger and statements','statements':'Management reports'} %}
-{% if page!='post' or info.role!='viewer' %}<a href="{{ path('office',{branch:branch,section:page}) }}" {% if app.request.attributes.get('section')==page %}aria-current="page"{% endif %}>{{ label|ui }}</a>{% endif %}
+<a href="{{ path('office',{branch:branch,section:'report',view:'statement'}) }}" {% if app.request.query.get('view')=='statement' %}aria-current="page"{% endif %}>{{ 'Account statements'|ui }}</a>
+{% for page,label in {'post':'Record transaction','report':'General ledger','statements':'Management reports'} %}
+{% if page!='post' or info.role!='viewer' %}<a href="{{ path('office',{branch:branch,section:page}) }}" {% if app.request.attributes.get('section')==page and app.request.query.get('view')!='statement' %}aria-current="page"{% endif %}>{{ label|ui }}</a>{% endif %}
 {% endfor %}</nav>
 {% endif %}
 <form class="logout" action="{{ path('logout') }}" method="post">{{ include('csrf.html.twig') }}<button>{{ 'Sign out'|ui }}</button></form>

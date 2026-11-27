@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Accounting\Amounts;
+use App\Accounting\AccountStatement;
 use App\Language;
 use App\Accounting\Books;
 use App\Accounting\Reports;
@@ -316,7 +317,7 @@ final class OfficeController extends AbstractController
                 AND (requested_by=? OR CAST(? AS INTEGER)=1)",[$branch,$r->query->getInt('draft'),$u['id'],$u['is_admin']])[0] ?? throw $this->createNotFoundException();
             $f=json_decode($draft['payload'],true,512,JSON_THROW_ON_ERROR);
         }
-        if ($r->isMethod('POST')) {
+        if ($r->isMethod('POST') && !($section==='report' && $r->query->get('view')==='statement')) {
             if ($section!=='post' || $info['role']==='viewer') { throw $this->createAccessDeniedException(); }
             $this->csrf($r);
             $f=$r->request->all();
@@ -351,6 +352,95 @@ final class OfficeController extends AbstractController
             if ($a['kind']==='employee') { $names['advance:'.$a['id']]=$a['name'].' ('.$this->language->label('Advance').')'; }
         }
         $query=$r->query;
+        if ($section==='report' && $query->get('view')==='statement') {
+            $accounts=[];
+            foreach ($parties as $party) {
+                $accounts[$party['kind'].':'.$party['id']]=['group'=>ucfirst($party['kind']),'name'=>$party['name'],'currency'=>$party['currency']];
+                if ($party['kind']==='employee') {
+                    $accounts['advance:'.$party['id']]=['group'=>'Staff advances','name'=>$party['name'],'currency'=>$party['currency']];
+                }
+            }
+            foreach ($cash as $a) {
+                $accounts['cash:'.$a['id']]=['group'=>ucfirst($a['kind']),'name'=>$a['name'],'currency'=>$a['currency']];
+            }
+            foreach ($names as $key=>$label) {
+                if (!str_contains($key,':')) { $accounts[$key]=['group'=>'General ledger','name'=>$label,'currency'=>$info['base']]; }
+            }
+            $groups=[];
+            foreach ($accounts as $key=>$item) { $groups[$item['group']][$key]=$item; }
+            $selected=$query->get('account','');
+            if ($selected!=='' && !isset($accounts[$selected])) { throw $this->createNotFoundException(); }
+            $today=gmdate('Y-m-d');
+            $from=$query->get('from') ?: substr($today,0,8).'01';
+            $to=$query->get('to') ?: $today;
+            $period=$query->get('period','');
+            if (in_array($period,['month','last','year'],true)) {
+                $month=new \DateTimeImmutable(substr($today,0,8).'01',new \DateTimeZone('UTC'));
+                $from=match($period) {'month'=>$month->format('Y-m-d'),'last'=>$month->modify('-1 month')->format('Y-m-d'),'year'=>substr($today,0,4).'-01-01'};
+                $to=$period==='last'?$month->modify('-1 day')->format('Y-m-d'):$today;
+            }
+            $checking=$r->isMethod('POST');
+            if ($checking) {
+                if (!$u['is_admin']) { throw $this->createAccessDeniedException(); }
+                $this->csrf($r);
+                $this->db->exec('BEGIN IMMEDIATE');
+            }
+            $statement=null; $error=null; $account=$accounts[$selected] ?? null;
+            try {
+                Books::date($from); Books::date($to);
+                if ($from>$to) { throw new DomainException('Start date is after end date.'); }
+                if ($account) {
+                    $statement=(new AccountStatement($this->db))->read($branch,$selected,$account['currency'],$prec[$account['currency']],$from,$to);
+                }
+                if ($checking) {
+                    if (!$statement || !$account) { throw new DomainException('Choose an account.'); }
+                    $side=$r->request->get('side');
+                    if (!in_array($side,['Dr','Cr'],true)) { throw new DomainException('Select debit or credit.'); }
+                    $external=Amounts::parse(trim((string)$r->request->get('external')),$prec[$account['currency']])*($side==='Cr'?-1:1);
+                    $insert=$this->db->prepare('INSERT INTO statement_checks(branch_id,account,currency,as_of,ledger_minor,external_minor,user_id)
+                        VALUES (?,?,?,?,?,?,?) ON CONFLICT(branch_id,account,as_of,ledger_minor,external_minor) DO NOTHING');
+                    $insert->execute([$branch,$selected,$account['currency'],$to,$statement['closing_minor'],$external,$u['id']]);
+                    if ($insert->rowCount()) {
+                        $this->db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'statement reconciliation',?)")
+                            ->execute([$u['id'],$selected.' '.$to]);
+                    }
+                    $this->db->exec('COMMIT');
+                    return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'report','view'=>'statement','account'=>$selected,'from'=>$from,'to'=>$to]);
+                }
+            } catch (\Throwable $e) {
+                if ($checking) { $this->db->exec('ROLLBACK'); }
+                if (!$e instanceof DomainException) { throw $e; }
+                $error=$e->getMessage();
+            }
+            $checks=[];
+            if ($statement && $u['is_admin']) {
+                $checks=$this->rows('SELECT s.*,u.name AS staff FROM statement_checks s JOIN users u ON u.id=s.user_id
+                    WHERE s.branch_id=? AND s.account=? AND s.as_of=? ORDER BY s.id DESC LIMIT 5',[$branch,$selected,$to]);
+                foreach ($checks as &$check) {
+                    $check['difference']=Amounts::format($check['external_minor']-$check['ledger_minor'],$prec[$account['currency']]);
+                    $check['external']=Amounts::format(abs($check['external_minor']),$prec[$account['currency']]);
+                } unset($check);
+            }
+            $profile=$this->rows('SELECT p.* FROM company_profiles p JOIN branches b ON b.company_id=p.company_id WHERE b.id=?',[$branch])[0] ?? [];
+            if ($query->get('download')==='csv' && $statement) {
+                $file=fopen('php://temp','w+');
+                fwrite($file,"\xEF\xBB\xBF");
+                $write=static function(array $cells) use ($file):void {
+                    fputcsv($file,array_map(static fn($v)=>preg_match('/^[\\s]*[=+@-]/',(string)$v)?"'".$v:$v,$cells));
+                };
+                $tr=[$this->language,'label'];
+                $write([$info['company'],$account['name'],$account['currency'],$from,$to]);
+                $write(array_map($tr,['Date','Document','Operation','Reference','Booking reference (PNR)','Ticket number','Debit','Credit','Balance','Dr / Cr']));
+                $write([$from,'',$tr('Opening balance'),'','','','','',$statement['opening']['amount'],$tr($statement['opening']['side'])]);
+                foreach ($statement['lines'] as $line) {
+                    $write([$line['day'],$line['number'],$tr($line['operation']),$line['reference'],$line['pnr'],$line['ticket'],$line['debit'],$line['credit'],$line['balance']['amount'],$tr($line['balance']['side'])]);
+                }
+                $write([$to,'',$tr('Closing balance'),'','','',$statement['debits'],$statement['credits'],$statement['closing']['amount'],$tr($statement['closing']['side'])]);
+                rewind($file);
+                return new Response(stream_get_contents($file),200,['Content-Type'=>'text/csv; charset=utf-8','Content-Disposition'=>'attachment; filename="statement-'.$from.'-'.$to.'.csv"']);
+            }
+            return $this->render('account_statement.html.twig',compact('branch','info','groups','account','selected','from','to','today','statement','profile','error','checks'));
+        }
         if ($section==='statements') {
             try {
                 $from=Books::date($query->get('from') ?: substr(gmdate('Y-m-d'),0,4).'-01-01');
@@ -358,6 +448,7 @@ final class OfficeController extends AbstractController
                 if ($from>$to) { throw new DomainException('Start date is after end date.'); }
             } catch (DomainException $e) { throw new HttpException(422,$e->getMessage()); }
             $report=(new Reports($this->db))->statements($branch,$from,$to,$query->get('group','service'));
+            $netProfit=Amounts::format(array_sum($report['profit']),$prec[$info['base']]);
             foreach (['profit','sheet'] as $part) {
                 foreach ($report[$part] as &$v) { $v=Amounts::format($v,$prec[$info['base']]); } unset($v);
             }
@@ -370,7 +461,7 @@ final class OfficeController extends AbstractController
                 $row['native']=Amounts::format($row['native'],$prec[$row['currency']]);
                 $row['base']=Amounts::format($row['base'],$prec[$info['base']]);
             } unset($row);
-            return $this->render('statements.html.twig',compact('report','info','from','to','names','branch'));
+            return $this->render('statements.html.twig',compact('report','info','from','to','names','branch','netProfit'));
         }
         $where=['branch_id=?']; $args=[$branch];
         foreach (['from'=>'day>=?','to'=>'day<=?','account'=>'account=?','user'=>'user_id=?','doc'=>"number='D-'||?",'number'=>'number=?'] as $key=>$clause) {
