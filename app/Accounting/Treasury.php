@@ -71,7 +71,10 @@ final class Treasury
             throw new InvalidArgumentException('Too many fractional digits for this currency.');
         }
         $digits = ltrim($match[1] . str_pad($fraction, (int) $decimals, '0'), '0');
-        if ($digits === '' || (string)(int)$digits !== $digits) {
+        if ($digits === '') {
+            throw new InvalidArgumentException('Enter an amount greater than zero.');
+        }
+        if ((string)(int)$digits !== $digits) {
             throw new InvalidArgumentException('Amount outside the supported range.');
         }
         return (int)$digits;

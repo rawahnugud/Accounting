@@ -58,7 +58,7 @@ final class StaffTreasuryController
         $data = $request->validate([
             'source' => 'required|integer', 'destination' => 'required|integer|different:source',
             'amount' => 'required|string|max:40', 'request_key' => 'required|uuid',
-        ]);
+        ], ['destination.different' => 'Choose two different accounts.']);
         $accounts = DB::table('cash_accounts')->where('branch_id', $branch)
             ->where('currency', $assignment->reporting_currency)
             ->whereIn('id', [$data['source'], $data['destination']])->count();
