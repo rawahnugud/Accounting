@@ -194,6 +194,16 @@ with tempfile.TemporaryDirectory() as temp:
         entry("fee",cash="1",amount="1")
         assert conn.execute("SELECT label FROM document_numbers").fetchone()==("MT-000100",)
         call("/branches/1/office/statements?group=customer&from=2026-01-01&to=2026-12-31")
+        entry("sale",customer="1",amount="10",passenger="محمد أحمد",route="KRT/JED")
+        travel=conn.execute("SELECT MAX(id) FROM documents WHERE kind='sale'").fetchone()[0]
+        for term in ["محمد","KRT/JED"]:
+            assert f"D-{travel}" in call("/branches/1/office/report?search="+parse.quote(term))
+        call("/control",dict(_token=token,action="rate",branch=1,currency="GBP",rate="٢٬٥٠٠",day="2026-02-01"))
+        assert conn.execute("SELECT rate FROM rates WHERE currency='GBP' AND effective='2026-02-01'").fetchone()==("2500",)
+        report=call("/branches/1/office/statements?from=2026-01-01&to=2026-12-31")
+        assert "Total assets" in report and "Aging of open balances" in report and "Unbalanced difference" not in report
+        assert "Outstanding" in call("/branches/1/office/post?task=receipt")
+        assert "Sales this month" in call("/branches/1/office/dashboard")
         print("PASS allocations, cancellations, management report, recovered sale, registrations, workbook and document numbering")
         ar = call("/branches/1/office/dashboard?lang=ar")
         assert 'lang="ar" dir="rtl"' in ar and 'تسجيل عملية بيع' in ar

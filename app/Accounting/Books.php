@@ -7,11 +7,12 @@ use DomainException;
 
 final class Books
 {
-    public const ADMIN_TYPES = ['opening','opening_party','reverse','deposit','withdrawal','payroll','advance','recovery','salary_payment','liability'];
+    public const ADMIN_TYPES = ['opening','opening_party','reverse','deposit','withdrawal','payroll','advance','recovery','salary_payment','liability','loan'];
+    public const EXPENSE_CATEGORIES = ['Rent','Utilities','Staff costs','Visa and government fees','Bank charges','Office supplies','Marketing','Transport','Communication','Maintenance'];
     public const TYPES = [
         'sale'=>'Service sale', 'reissue'=>'Ticket reissue (incremental amounts)', 'refund'=>'Customer and supplier credit',
         'receipt'=>'Customer receipt', 'supplier_payment'=>'Supplier payment', 'customer_refund'=>'Pay customer refund',
-        'supplier_refund'=>'Receive supplier refund', 'liability'=>'Record creditor obligation', 'repayment'=>'Repay creditor',
+        'supplier_refund'=>'Receive supplier refund', 'liability'=>'Record creditor obligation', 'loan'=>'Receive a creditor loan', 'repayment'=>'Repay creditor',
         'payroll'=>'Accrue salary', 'salary_payment'=>'Pay salary', 'advance'=>'Employee advance', 'recovery'=>'Recover advance from salary',
         'opening_party'=>'Opening customer or supplier balance', 'opening'=>'Opening cash balance', 'deposit'=>'Owner contribution', 'withdrawal'=>'Owner withdrawal',
         'fee'=>'Bank fee or expense', 'transfer'=>'Bank or safe transfer', 'reverse'=>'Reverse or void document'
@@ -176,7 +177,11 @@ final class Books
         }
         $meta=['override_by'=>$this->overrides?$this->actor:null];
 
-        foreach (['service','passenger','pnr','ticket','airline','route','note'] as $field) {
+        $category=trim($f['category'] ?? '');
+        if ($category!=='' && (!in_array($kind,['fee','liability'],true) || !in_array($category,self::EXPENSE_CATEGORIES,true))) {
+            throw new DomainException('Choose an expense category from the list.');
+        }
+        foreach (['service','passenger','pnr','ticket','airline','route','note','category'] as $field) {
             $meta[$field]=trim($f[$field] ?? '');
             if (strlen($meta[$field])>500) { throw new DomainException('Detail exceeds 500 characters.'); }
         }
@@ -238,7 +243,7 @@ final class Books
             $accounts=match($kind) {
                 'receipt'=>[$cash('cash'),$party('customer')], 'customer_refund'=>[$party('customer'),$cash('cash')],
                 'supplier_payment'=>[$party('supplier'),$cash('cash')], 'supplier_refund'=>[$cash('cash'),$party('supplier')],
-                'liability'=>[['expense',$base],$party('creditor')], 'repayment'=>[$party('creditor'),$cash('cash')],
+                'liability'=>[['expense',$base],$party('creditor')], 'loan'=>[$cash('cash'),$party('creditor')], 'repayment'=>[$party('creditor'),$cash('cash')],
                 'payroll'=>[['salary_expense',$base],$party('employee')], 'salary_payment'=>[$party('employee'),$cash('cash')],
                 'advance'=>[['advance:'.explode(':',$party('employee')[0])[1],$party('employee')[1]],$cash('cash')],
                 'recovery'=>[$party('employee'),['advance:'.explode(':',$party('employee')[0])[1],$party('employee')[1]]],
@@ -259,7 +264,7 @@ final class Books
                 $account=$party($map[$kind])[0];
                 $validKinds=match($kind) {
                     'receipt','supplier_payment'=>['sale','reissue','opening_party'],
-                    'salary_payment'=>['payroll'], 'repayment'=>['liability'],
+                    'salary_payment'=>['payroll'], 'repayment'=>['liability','loan'],
                     'customer_refund','supplier_refund'=>['refund']
                 };
                 if (!in_array($original['kind'],$validKinds,true)) { throw new DomainException('Choose a matching invoice or obligation.'); }

@@ -67,7 +67,7 @@ final class Corrections
             if (!$void) {
                 $this->db->prepare('UPDATE schedules SET document_id=? WHERE document_id=?')->execute([$result,$id]);
                 $planned=$this->books->rows('SELECT sum(amount_minor) AS total FROM schedules WHERE document_id=?',[$result])[0]['total'];
-                if ($planned && !$this->books->rows("SELECT id FROM open_items WHERE id=? AND kind='liability' AND abs(original_minor)>=CAST(? AS INTEGER)",[$result,(int)$planned])) {
+                if ($planned && !$this->books->rows("SELECT id FROM open_items WHERE id=? AND kind IN ('liability','loan') AND abs(original_minor)>=CAST(? AS INTEGER)",[$result,(int)$planned])) {
                     throw new DomainException('Installments exceed original obligation.');
                 }
             }
