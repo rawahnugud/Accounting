@@ -1,17 +1,28 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{ title }} · Midnight Travel</title>
-<style>
-[hidden]{display:none!important}*{box-sizing:border-box}body{margin:0;background:#f8f6f3;color:#281e22;font:1rem/1.55 system-ui,sans-serif}
-header,main{max-width:46rem;margin:auto;padding:1.5rem}header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #d9cfd2}
-header strong,a{color:#651c39}h1{line-height:1.15}form p{margin:1rem 0}label{display:block;font-weight:600}
-input,select,button{font:inherit;padding:.55rem .8rem}input,select{width:100%;max-width:30rem;border:1px solid #a89ba0;border-radius:.3rem}
-button{border:0;background:#651c39;color:white;border-radius:.3rem;cursor:pointer}li{padding:.3rem 0}
-[role=alert]{color:#82112b}
-header,main{max-width:76rem}nav,.actions{display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem}.grid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))}.card,details{background:#fff;border:1px solid #dfd4d7;border-radius:.5rem;padding:1rem;margin:.5rem 0}.card strong{display:block;font-size:1.45rem}summary{cursor:pointer;font-weight:650}table{width:100%;border-collapse:collapse}td,th{padding:.5rem;text-align:left;border-bottom:1px solid #ddd}.scroll{overflow:auto}small{color:#5e5258}button{margin:.5rem 0} @media print{header,nav,form,.actions,button,summary{display:none}main{max-width:none;padding:0}body{background:white}.scroll{overflow:visible}}
-</style></head><body><header><strong>Midnight Travel · Accounting</strong>
-{% if app.user %}<form action="{{ path('logout') }}" method="post">{{ include("csrf.html.twig") }}<button>Sign out</button></form>{% endif %}
-</header><main> {% if app.user %}<nav><a href="{{ path('home') }}">Branches</a>{% if is_granted('ROLE_ADMIN') %}<a href="{{ path('control') }}">Admin control panel</a> <a href="{{ path('overview') }}">Group overview</a>{% endif %}</nav>{% endif %}<h1>{{ title }}</h1>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#85144b">
+<title>{{ title }} · Midnight Travel Accounting</title>
+<link rel="stylesheet" href="{{ app.request.basePath }}/assets/accounting.css?v=1">
+</head>
+<body class="{{ app.user ? 'staff' : 'guest' }}">
+<a class="skip" href="#workspace">Skip to content</a>
+<header class="mast"><div class="frame mast-inner">
+<a class="brand" href="{{ path(app.user ? 'home' : 'login') }}">
+<img src="{{ app.request.basePath }}/assets/midnight-travel.png" width="1500" height="439" alt="Midnight Travel"><span>Accounting</span></a>
+{% if app.user %}
+<nav class="primary" aria-label="Main navigation">
+{% set areas = {'home':'Branches'} %}
+{% if is_granted('ROLE_ADMIN') %}{% set areas=areas|merge({'overview':'Group overview','control':'Admin control panel'}) %}{% endif %}
+{% for route,name in areas %}<a href="{{ path(route) }}" {% if app.request.attributes.get('_route')==route %}aria-current="page"{% endif %}>{{ name }}</a>{% endfor %}
+</nav>
+<form class="logout" action="{{ path('logout') }}" method="post">{{ include('csrf.html.twig') }}<button>Sign out</button></form>
+{% endif %}
+</div></header>
+<main id="workspace" class="frame">
+<div class="page-heading"><h1>{{ title }}</h1></div>
 {% for error in app.flashes('error') %}<p role="alert">{{ error }}</p>{% endfor %}
 {% for message in app.flashes('message') %}<p role="status">{{ message }}</p>{% endfor %}
-{% block content %}{% endblock %}</main></body></html>
+{% block content %}{% endblock %}
+</main></body></html>

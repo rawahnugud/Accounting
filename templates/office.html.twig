@@ -1,10 +1,10 @@
 {% extends 'layout.html.twig' %}
 {% set title=section=='dashboard'?info.name~' dashboard':(section=='post'?'Record a transaction':(doc?'Document D-'~doc.id:'Ledger and statements')) %}
 {% block content %}
-<p>{{ info.company }} · {{ info.name }} · {{ info.base }} · {{ info.role }}</p>
-<nav>{% for page,label in {'dashboard':'Dashboard','post':'Record transaction','report':'Ledger and statements','statements':'Management reports'} %}{% if page!='post' or info.role!='viewer' %}<a href="{{ path('office',{branch:branch,section:page}) }}">{{ label }}</a>{% endif %}{% endfor %}</nav>
+<p class="context">{{ info.company }} <span>{{ info.base }}</span> <span>{{ info.role|capitalize }}</span></p>
+<nav class="tabs" aria-label="Branch navigation">{% for page,label in {'dashboard':'Dashboard','post':'Record transaction','report':'Ledger and statements','statements':'Management reports'} %}{% if page!='post' or info.role!='viewer' %}<a href="{{ path('office',{branch:branch,section:page}) }}" {% if section==page %}aria-current="page"{% endif %}>{{ label }}</a>{% endif %}{% endfor %}</nav>
 {% if section=='dashboard' %}
-<div class="grid">{% for label,value in metrics %}<div class="card"><a href="{{ path('office',{branch:branch,section:label in ['Gross profit','Net profit','Sales','Supplier costs']?'statements':'report'}) }}">{{ label }}</a><strong>{{ value }} {{ info.base }}</strong></div>{% endfor %}</div>
+<div class="grid metrics">{% for label,value in metrics %}<div class="card"><a href="{{ path('office',{branch:branch,section:label in ['Gross profit','Net profit','Sales','Supplier costs']?'statements':'report'}) }}">{{ label }}</a><strong>{{ value }} <small>{{ info.base }}</small></strong></div>{% endfor %}</div>
 {% elseif section=='post' %}
 {% if preview %}<h2>Posting preview</h2><table><tr><th>Account</th><th>Account movement</th><th>{{ info.base }} movement</th></tr>{% for e in preview %}<tr><td>{{ names[e.account]|default(e.account) }}</td><td>{{ e.native }} {{ e.currency }}</td><td>{{ e.base }}</td></tr>{% endfor %}</table>
 <form method="post">{{ include('csrf.html.twig') }}{% for k,v in f %}{% if k not in ['_token','mode'] %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}<button name="mode" value="confirm">Confirm posting</button></form>{% endif %}

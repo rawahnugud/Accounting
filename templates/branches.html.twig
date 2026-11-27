@@ -1,7 +1,14 @@
 {% extends 'layout.html.twig' %}
-{% set title = 'Your branches' %}
+{% set title='Your branches' %}
 {% block content %}
-<ul>{% for branch in branches %}
-<li><a href="{{ path('office', {branch: branch.id,section:'dashboard'}) }}">{{ branch.company }} · {{ branch.name }}</a> ({{ branch.role }})</li>
-{% else %}<li>No branch assigned. Contact your accounting administrator.</li>{% endfor %}</ul>
+<div class="branch-list">
+{% for branch in branches %}
+<a class="branch-link" href="{{ path('office',{branch:branch.id,section:'dashboard'}) }}">
+<span class="branch-mark" aria-hidden="true">{{ branch.name|slice(0,1)|upper }}</span>
+<span class="branch-name"><strong>{{ branch.name }}</strong><span>{{ branch.company }}</span></span>
+<span class="role">{{ branch.role|capitalize }}</span>
+<span class="arrow" aria-hidden="true">→</span>
+</a>
+{% else %}<p>No branch assigned. Contact your accounting administrator.</p>{% endfor %}
+</div>
 {% endblock %}

@@ -1,5 +1,5 @@
 {% extends 'layout.html.twig' %}
 {% set title='Group overview' %}
-{% block content %}<table><tr><th>Company and branch</th><th>Reporting currency</th><th>Cash</th><th>Sales</th><th>Net profit</th></tr>
+{% block content %}<div class="scroll"><table><tr><th>Company and branch</th><th>Reporting currency</th><th>Cash</th><th>Sales</th><th>Net profit</th></tr>
 {% for r in rows %}<tr><td><a href="{{ path('office',{branch:r.id,section:'dashboard'}) }}">{{ r.company }} · {{ r.name }}</a></td><td>{{ r.currency }}</td><td>{{ r.cash }}</td><td>{{ r.sales }}</td><td>{{ r.profit }}</td></tr>{% endfor %}
-{% for currency,r in totals %}<tr><th>Total</th><th>{{ currency }}</th><th>{{ r.cash }}</th><th>{{ r.sales }}</th><th>{{ r.profit }}</th></tr>{% endfor %}</table>{% endblock %}
+{% for currency,r in totals %}<tr><th>Total</th><th>{{ currency }}</th><th>{{ r.cash }}</th><th>{{ r.sales }}</th><th>{{ r.profit }}</th></tr>{% endfor %}</table></div>{% endblock %}
