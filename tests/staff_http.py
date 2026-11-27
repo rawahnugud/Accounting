@@ -1,4 +1,6 @@
 """Local integration check. Run after composer install. Requires Python and PHP CLI."""
+import json
+import uuid
 import http.cookiejar
 import os
 import re
@@ -67,7 +69,8 @@ with tempfile.TemporaryDirectory() as temp:
             creds = {"email":role+"@example.test","password":"wrong","_token":field(login,"_token")}
             assert "Unable to sign in" in call("/login",creds)
             creds["password"] = password
-            assert "Your branches" in call("/login",creds)
+            assert "Staff sign in" not in call("/login",creds)
+            assert "Recent sales" in call("/")
             call("/branches/2",status=404)
             page = call("/branches/1")
             form = {"source":"1","destination":"2","amount":"40.05","_token":field(page,"_token")}
@@ -122,15 +125,33 @@ with tempfile.TemporaryDirectory() as temp:
         assert conn.execute("SELECT outstanding_minor FROM open_items WHERE id=1").fetchone()==(1025,)
         call("/branches/1/matches",dict(_token=token,remove=1))
         assert conn.execute("SELECT outstanding_minor FROM open_items WHERE id=1").fetchone()==(1525,)
-        entry("opening",cash="1",amount="25",mode="request")
+        draft_key=str(uuid.uuid4())
+        unfinished=dict(kind="sale",customer="1",currency="USD",day="2026-11-27",
+                        amount="576",cost="500",cost_currency="USD",reference="00",request_key=draft_key)
+        conn.execute("INSERT INTO requests(branch_id,requested_by,request_key,payload) VALUES (1,2,?,?)",
+                     (draft_key,json.dumps(unfinished)))
+        conn.commit()
+        assert "Continue entry" in call("/")
+        assert 'value="576"' in call("/branches/1/office/post?draft=1")
+        assert "Select a supplier for the cost" in call("/branches/1/office/post",{**unfinished,"_token":token,"mode":"save"})
         assert conn.execute("SELECT state FROM requests").fetchone()==("pending",)
-        call("/branches/1/requests/1",dict(_token=token,state="approved"))
-        assert conn.execute("SELECT state FROM requests").fetchone()==("approved",)
+        corrected={**unfinished,"_token":token,"mode":"save","supplier":"new","new_supplier":"Supplier One"}
+        for _ in range(2):
+            assert "Saved to the ledger." in call("/branches/1/office/post",corrected)
+        doc=conn.execute("SELECT id FROM documents WHERE request_key=?",(draft_key,)).fetchone()[0]
+        assert conn.execute("SELECT state,document_id FROM requests").fetchone()==("posted",doc)
+        assert conn.execute("SELECT SUM(base_minor) FROM entries WHERE document_id=?",(doc,)).fetchone()==(0,)
+        assert conn.execute("SELECT -SUM(base_minor) FROM entries WHERE account IN ('sales','service_cost') AND document_id=?",(doc,)).fetchone()==(7600,)
+        assert "76.00" in call("/")
+        call("/control",dict(_token=token,action="currency",branch=1,code="SDG",precision="2",initial_rate="2000"))
+        assert conn.execute("SELECT rate FROM rates WHERE currency='SDG'").fetchone()==("2000",)
+        call("/control",dict(_token=token,action="user",name="New staff",email="new@example.test",password=password,branch=1,role="cashier",salary_currency="USD"))
+        assert conn.execute("SELECT p.name FROM employee_logins l JOIN parties p ON p.id=l.employee_id").fetchone()==("New staff",)
         call("/control",dict(_token=token,action="numbering",branch=1,prefix="MT",next="100"))
         entry("fee",cash="1",amount="1")
         assert conn.execute("SELECT label FROM document_numbers").fetchone()==("MT-000100",)
         call("/branches/1/office/statements?group=customer&from=2026-01-01&to=2026-12-31")
-        print("PASS allocations, cancellations, management report, approval, workbook and document numbering")
+        print("PASS allocations, cancellations, management report, recovered sale, registrations, workbook and document numbering")
         ar = call("/branches/1/office/dashboard?lang=ar")
         assert 'lang="ar" dir="rtl"' in ar and 'تسجيل عملية بيع' in ar
         assert 'تحصيل دفعة من عميل' in call("/branches/1/office/dashboard")

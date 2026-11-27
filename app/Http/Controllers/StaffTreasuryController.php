@@ -57,7 +57,16 @@ final class StaffTreasuryController extends AbstractController
 
     public function home(): Response
     {
-        return $this->render('branches.html.twig', ['branches' => $this->assignments()]);
+        $assignments=$this->assignments();
+        if ($assignments) {
+            // Prefer the existing Sudan workspace when upgrading an installation with legacy branches.
+            $workspace=$assignments[0];
+            foreach ($assignments as $item) {
+                if (strcasecmp(trim($item['name']),'Sudan')===0) { $workspace=$item; break; }
+            }
+            return $this->redirectToRoute('office',['branch'=>$workspace['id'],'section'=>'dashboard']);
+        }
+        return $this->render('branches.html.twig',['branches'=>[]]);
     }
 
     public function branch(int $branch, Request $request): Response

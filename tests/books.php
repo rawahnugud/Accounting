@@ -54,6 +54,17 @@ $foreign=$post('sale',['customer'=>1,'currency'=>'SDG','amount'=>'2000','convert
 same($db->query("SELECT SUM(base_minor) FROM entries WHERE document_id=$foreign AND account='sales'")->fetchColumn(),-100);
 denied(fn()=>(new Books($db,2,1))->transact(form('receipt',['cash'=>1,'customer'=>1,'amount'=>'1'])));
 denied(fn()=>(new Books($db,1,2))->transact($sale));
+$draft=form('sale',['customer'=>'1','amount'=>'576','cost'=>'500','currency'=>'USD','cost_currency'=>'USD']);
+$db->prepare("INSERT INTO requests(branch_id,requested_by,request_key,payload) VALUES (1,1,?,?)")->execute([$draft['request_key'],json_encode($draft)]);
+denied(fn()=>$book->transact($draft));
+same($db->query('SELECT state FROM requests')->fetchColumn(),'pending');
+$draft['supplier']='new';
+$draft['new_supplier']='Synthetic supplier';
+$document=$book->transact($draft)['id'];
+same($book->transact($draft)['id'],$document);
+same((int)$db->query("SELECT document_id FROM requests WHERE state='posted'")->fetchColumn(),$document);
+same((int)$db->query("SELECT -SUM(base_minor) FROM entries WHERE document_id=$document AND account IN ('sales','service_cost')")->fetchColumn(),7600);
+echo "PASS unfinished USD 576 sale, missing supplier recovery, single posting and USD 76 margin\n";
 $db->exec("INSERT INTO periods VALUES (1,'2026-12-31')");
 denied(fn()=>$post('opening',['cash'=>1,'amount'=>'100']));
 same((int)$db->query('SELECT COUNT(*) FROM (SELECT document_id FROM entries GROUP BY document_id HAVING SUM(base_minor)<>0)')->fetchColumn(),0);

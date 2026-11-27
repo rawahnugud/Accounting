@@ -7,7 +7,7 @@ use DomainException;
 
 final class Books
 {
-    public const APPROVAL_TYPES = ['opening','opening_party','reverse','deposit','withdrawal','payroll','advance','recovery','salary_payment','liability'];
+    public const ADMIN_TYPES = ['opening','opening_party','reverse','deposit','withdrawal','payroll','advance','recovery','salary_payment','liability'];
     public const TYPES = [
         'sale'=>'Service sale', 'reissue'=>'Ticket reissue (incremental amounts)', 'refund'=>'Customer and supplier credit',
         'receipt'=>'Customer receipt', 'supplier_payment'=>'Supplier payment', 'customer_refund'=>'Pay customer refund',
@@ -62,7 +62,7 @@ final class Books
             throw $e;
         }
     }
-    /** Caller owns the open write transaction and commits the approval and document together. */
+    /** Used when an allocation cancellation already owns the SQLite write transaction. */
     public function postWithinTransaction(array $form): array
     {
         return $this->build($form,false);
@@ -74,14 +74,15 @@ final class Books
         if (!$admin && $access['role']!=='cashier') { throw new DomainException('Posting permission required.'); }
         $kind=$f['kind'] ?? '';
         if (!isset(self::TYPES[$kind])) { throw new DomainException('Choose an operation.'); }
-        if (!$admin && in_array($kind,self::APPROVAL_TYPES,true)) {
-            throw new DomainException('Administrator approval required.');
+        if (!$admin && in_array($kind,self::ADMIN_TYPES,true)) {
+            throw new DomainException('Administrator access required.');
         }
         $day=self::date($f['day'] ?? '');
         $due=self::date(($f['due'] ?? '') ?: $day);
         $ref=trim($f['reference'] ?? '');
         $key=$f['request_key'] ?? '';
-        if (!$ref || strlen($ref)>160 || !preg_match('/\A[a-f\d-]{36}\z/i',$key)) { throw new DomainException('Enter a reference and reopen the form if it expired.'); }
+        if ($ref==='') { $ref='MT-'.strtoupper(substr($key,0,8)); }
+        if (strlen($ref)>160 || !preg_match('/\A[a-f\d-]{36}\z/i',$key)) { throw new DomainException('Enter a reference and reopen the form if it expired.'); }
         unset($f['_token'],$f['mode']); ksort($f);
         $fingerprint=hash('sha256',json_encode([$this->actor,$f],JSON_THROW_ON_ERROR));
         $old=$this->rows('SELECT id,fingerprint FROM documents WHERE branch_id=? AND request_key=?',[$this->branch,$key]);
@@ -89,14 +90,33 @@ final class Books
             if ($old[0]['fingerprint']!==$fingerprint) { throw new DomainException('Request already used with different details.'); }
             return ['id'=>$old[0]['id'],'lines'=>[]];
         }
+        $draft=$this->rows('SELECT id,state,requested_by FROM requests WHERE branch_id=? AND request_key=?',[$this->branch,$key])[0] ?? null;
+        if ($draft && ($draft['state']!=='pending' || (!$admin && (int)$draft['requested_by']!==$this->actor))) {
+            throw new DomainException('This unfinished entry is no longer available.');
+        }
         $closed=$this->rows('SELECT closed_through FROM periods WHERE branch_id=?',[$this->branch]);
         if ($closed && $day<=$closed[0]['closed_through']) { throw new DomainException('This period is closed.'); }
         $branch=$this->one('SELECT c.reporting_currency AS base FROM branches b JOIN companies c ON c.id=b.company_id WHERE b.id=?',[$this->branch]);
         $base=$branch['base'];
         $cash=function(string $field) use ($f):array {
-            $a=$this->one('SELECT id,currency FROM cash_accounts WHERE branch_id=? AND id=?',[$this->branch,$f[$field] ?? 0]);
+            if (empty($f[$field])) { throw new DomainException($field==='destination'?'Choose the destination bank or safe.':'Choose the bank or safe.'); }
+            $a=$this->one('SELECT id,currency FROM cash_accounts WHERE branch_id=? AND id=?',[$this->branch,$f[$field]]);
             return ['cash:'.$a['id'],$a['currency']];
         };
+        if ($kind==='sale') {
+            foreach (['customer'=>'currency','supplier'=>'cost_currency'] as $type=>$currencyField) {
+                if (($f[$type] ?? '')!=='new') { continue; }
+                $name=trim($f['new_'.$type] ?? '');
+                if ($name==='' || strlen($name)>200) { throw new DomainException('Enter the new account name.'); }
+                $currency=($f[$currencyField] ?? '') ?: $base;
+                $this->one('SELECT code FROM currencies WHERE code=?',[$currency]);
+                $this->db->prepare('INSERT INTO parties(branch_id,kind,name,currency) VALUES (?,?,?,?)
+                    ON CONFLICT(branch_id,kind,name) DO NOTHING')->execute([$this->branch,$type,$name,$currency]);
+                $record=$this->one('SELECT id,currency FROM parties WHERE branch_id=? AND kind=? AND name=?',[$this->branch,$type,$name]);
+                if ($record['currency']!==$currency) { throw new DomainException('An account with this name already uses another currency. Select the existing account.'); }
+                $f[$type]=(string)$record['id'];
+            }
+        }
         $party=function(string $type) use ($f):array {
             $a=$this->one('SELECT id,currency FROM parties WHERE branch_id=? AND kind=? AND id=?',[$this->branch,$type,$f[$type] ?? 0]);
             return [$type.':'.$a['id'],$a['currency']];
@@ -190,6 +210,7 @@ final class Books
             $pair($credit?$income:$client,$credit?$client:$income,$amount,$source);
             $meta['source_rate']=$this->rate($source,$day)['rate'];
             if ($cost!=='' && Amounts::parse($cost,$this->rate($costSource,$day)['places'])>0) {
+                if (empty($f['supplier'])) { throw new DomainException('Select a supplier for the cost, or add a new supplier.'); }
                 $supplier=$party('supplier');
                 $pair($credit?$supplier:$expense,$credit?$expense:$supplier,$cost,$costSource);
                 $meta['cost_rate']=$this->rate($costSource,$day)['rate'];

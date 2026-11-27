@@ -81,12 +81,13 @@ final class OfficeController extends AbstractController
                 if (!$e instanceof DomainException && !$e instanceof \PDOException) { throw $e; }
                 $this->addFlash('error',$e instanceof DomainException?$e->getMessage():'Check the selected records and duplicate values.');
             }
-            return $this->redirectToRoute('control');
+            $setup=(string)$r->query->get('setup','');
+            return $this->redirectToRoute('control',$setup!=='' ? ['setup'=>$setup,'branch'=>(int)($f['branch'] ?? 0),'kind'=>($f['kind'] ?? 'customer')] : []);
         }
         return $this->render('control.html.twig',[
-            'branches'=>$this->rows('SELECT b.*,c.name AS company FROM branches b JOIN companies c ON c.id=b.company_id ORDER BY c.name,b.name'),
+            'branches'=>$this->rows('SELECT b.*,c.name AS company,c.reporting_currency FROM branches b JOIN companies c ON c.id=b.company_id ORDER BY c.name,b.name'),
             'companies'=>$this->rows('SELECT * FROM companies ORDER BY name'),'currencies'=>$this->rows('SELECT * FROM currencies ORDER BY code'),
-            'employees'=>$this->rows("SELECT p.*,b.name AS branch FROM parties p JOIN branches b ON b.id=p.branch_id WHERE kind='employee'"),
+            'employees'=>$this->rows("SELECT p.*,b.name AS branch,l.user_id AS login_id FROM parties p JOIN branches b ON b.id=p.branch_id LEFT JOIN employee_logins l ON l.employee_id=p.id WHERE kind='employee'"),
             'leave'=>$this->rows('SELECT l.*,p.name FROM staff_leave l JOIN parties p ON p.id=l.employee_id ORDER BY l.id DESC LIMIT 100'),
             'users'=>$this->rows('SELECT id,name,email,is_admin FROM users ORDER BY name'),
             'parties'=>$this->rows('SELECT p.*,b.name AS branch,t.job_title,t.salary_minor,k.limit_minor,c.decimals FROM parties p JOIN branches b ON b.id=p.branch_id JOIN currencies c ON c.code=p.currency LEFT JOIN employee_terms t ON t.employee_id=p.id LEFT JOIN credit_limits k ON k.party_id=p.id ORDER BY b.name,p.name'),
@@ -157,7 +158,12 @@ final class OfficeController extends AbstractController
             $run('INSERT INTO branches(company_id,name) VALUES (?,?)',[$this->field($f,'company'),$this->field($f,'name')]); break;
         case 'currency':
             if (!preg_match('/^[0-6]$/D',$f['precision'] ?? '')) { throw new DomainException('Use 0 to 6 decimal places.'); }
-            $run('INSERT INTO currencies VALUES (?,?)',[strtoupper($this->field($f,'code')),$f['precision']]); break;
+            $code=strtoupper($this->field($f,'code'));
+            $run('INSERT INTO currencies VALUES (?,?)',[$code,$f['precision']]);
+            if (trim($f['initial_rate'] ?? '')!=='') {
+                $this->setup(['action'=>'rate','currency'=>$code,'branch'=>$branch,'rate'=>$f['initial_rate'],'day'=>gmdate('Y-m-d')],$actor);
+            }
+            break;
         case 'rate':
             $rate=Amounts::parse($this->field($f,'rate'),6);
             if (!$rate || $rate>1000000000000) { throw new DomainException('Rate must be positive and at most one million.'); }
@@ -174,6 +180,17 @@ final class OfficeController extends AbstractController
             $run('INSERT INTO users(name,email,password,created_at,updated_at) VALUES (?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)',
                 [$this->field($f,'name'),$email,password_hash($password,PASSWORD_BCRYPT)]);
             $f['user']=$this->db->lastInsertId();
+            if (!empty($f['employee_id'])) {
+                $employee=$this->rows("SELECT id FROM parties WHERE id=? AND branch_id=? AND kind='employee'",[$f['employee_id'],$branch])[0] ?? throw new DomainException('Choose an employee in this workspace.');
+                $employeeId=$employee['id'];
+            } else {
+                $salaryCurrency=($f['salary_currency'] ?? '') ?: ($this->rows('SELECT c.reporting_currency FROM branches b JOIN companies c ON c.id=b.company_id WHERE b.id=?',[$branch])[0]['reporting_currency'] ?? '');
+                $existing=$this->rows("SELECT id FROM parties WHERE branch_id=? AND kind='employee' AND name=?",[$branch,$name]);
+                if ($existing) { throw new DomainException('Select the existing employee profile for this login.'); }
+                $run("INSERT INTO parties(branch_id,kind,name,currency) VALUES (?,'employee',?,?)",[$branch,$name,$salaryCurrency]);
+                $employeeId=$this->db->lastInsertId();
+            }
+            $run('INSERT INTO employee_logins(user_id,employee_id) VALUES (?,?)',[$f['user'],$employeeId]);
             // Grant the initial branch assignment in the same transaction.
         case 'access':
             if (($f['role'] ?? '')==='revoke') {
@@ -281,33 +298,6 @@ final class OfficeController extends AbstractController
         return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'dashboard']);
     }
 
-    public function decide(int $branch,int $id,Request $r): Response
-    {
-        $this->csrf($r);
-        $u=$this->identity();
-        if (!$u['is_admin']) { throw $this->createAccessDeniedException(); }
-        $this->db->exec('BEGIN IMMEDIATE');
-        try {
-            $req=$this->rows("SELECT * FROM requests WHERE id=? AND branch_id=? AND state='pending'",[$id,$branch])[0] ?? throw new DomainException('Request already decided.');
-            $state=$r->request->get('state');
-            if (!in_array($state,['approved','declined'],true)) { throw new DomainException('Invalid decision.'); }
-            $document=null;
-            if ($state==='approved') {
-                $payload=json_decode($req['payload'],true,512,JSON_THROW_ON_ERROR);
-                $document=(new Books($this->db,$branch,(int)$u['id']))->postWithinTransaction($payload)['id'];
-            }
-            $this->db->prepare('UPDATE requests SET state=?,decision_by=?,document_id=? WHERE id=?')->execute([$state,$u['id'],$document,$id]);
-            $this->db->prepare('INSERT INTO audit_events(user_id,action,detail) VALUES (?,?,?)')->execute([$u['id'],$state,"Request $id"]);
-            $this->db->exec('COMMIT');
-            $this->addFlash('message','Decision saved.');
-        } catch (\Throwable $e) {
-            $this->db->exec('ROLLBACK');
-            if (!$e instanceof DomainException) { throw $e; }
-            $this->addFlash('error',$e->getMessage());
-        }
-        return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'dashboard']);
-    }
-
     public function office(int $branch,string $section,Request $r): Response
     {
         $u=$this->identity();
@@ -320,35 +310,30 @@ final class OfficeController extends AbstractController
         if ($u['is_admin']) { $info['role']='admin'; }
         $books=new Books($this->db,$branch,(int)$u['id']);
         $f=[]; $preview=null;
+        if ($section==='post' && $info['role']==='viewer') { throw $this->createAccessDeniedException(); }
+        if ($section==='post' && $r->isMethod('GET') && $r->query->getInt('draft')) {
+            $draft=$this->rows("SELECT payload FROM requests WHERE branch_id=? AND id=? AND state='pending'
+                AND (requested_by=? OR CAST(? AS INTEGER)=1)",[$branch,$r->query->getInt('draft'),$u['id'],$u['is_admin']])[0] ?? throw $this->createNotFoundException();
+            $f=json_decode($draft['payload'],true,512,JSON_THROW_ON_ERROR);
+        }
         if ($r->isMethod('POST')) {
             if ($section!=='post' || $info['role']==='viewer') { throw $this->createAccessDeniedException(); }
             $this->csrf($r);
             $f=$r->request->all();
             if (array_filter($f,'is_array')) { throw new HttpException(422,'Invalid form fields.'); }
-            if (($f['mode'] ?? '')==='request') {
-                $payload=$f;
-                unset($payload['_token'],$payload['mode']);
-                if (strlen(json_encode($payload))>10000 || !isset(Books::TYPES[$f['kind'] ?? '']) || !Uuid::isValid($f['request_key'] ?? '')) { throw new HttpException(422,'Invalid request.'); }
-                $encoded=json_encode($payload,JSON_THROW_ON_ERROR);
-                $q=$this->db->prepare('INSERT INTO requests(branch_id,requested_by,request_key,payload) VALUES (?,?,?,?) ON CONFLICT(branch_id,request_key) DO NOTHING');
-                $q->execute([$branch,$u['id'],$f['request_key'],$encoded]);
-                $known=$this->rows('SELECT payload,requested_by FROM requests WHERE branch_id=? AND request_key=?',[$branch,$f['request_key']])[0];
-                if ($known['payload']!==$encoded || (int)$known['requested_by']!==(int)$u['id']) { throw new HttpException(409,'Request key already used.'); }
-                $this->addFlash('message','Submitted for administrator approval.');
-                return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'dashboard']);
-            }
             $mode=$f['mode'] ?? '';
-            if (!in_array($mode,['preview','confirm','edit'],true)) { throw new HttpException(422,'Choose a transaction action.'); }
+            if (!in_array($mode,['preview','confirm','edit','save'],true)) { throw new HttpException(422,'Choose a transaction action.'); }
             if ($mode!=='edit') {
                 $isPreview=($f['mode'] ?? '')==='preview';
                 try {
                     $result=$books->transact($f,$isPreview);
                     if (!$isPreview || $result['id']) {
+                        $this->addFlash('message','Saved to the ledger.');
                         return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'report','doc'=>$result['id']]);
                     }
                     $preview=$result['lines'];
                 } catch (DomainException $e) {
-                    if ($e->getMessage()==='Administrator approval required.') {
+                    if ($e->getMessage()==='Administrator access required.') {
                         $this->db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'permission denied',?)")->execute([$u['id'],'Branch '.$branch.' · '.($f['kind'] ?? '')]);
                     }
                     $this->addFlash('error',$e->getMessage());
@@ -456,7 +441,21 @@ final class OfficeController extends AbstractController
             JOIN parties p ON e.account='creditor:'||p.id WHERE d.branch_id=? AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY s.due",[$branch]);
         foreach ($schedule as &$item) { $item['amount']=Amounts::format($item['amount_minor'],$prec[$item['currency']]); } unset($item);
         $matches=$info['role']==='admin' ? $this->rows('SELECT id,debit_doc,credit_doc,account FROM matches WHERE branch_id=? ORDER BY id DESC',[$branch]) : [];
-        $pending=$info['role']==='admin' ? $this->rows("SELECT r.*,u.name FROM requests r JOIN users u ON u.id=r.requested_by WHERE branch_id=? AND state='pending' ORDER BY r.id",[$branch]) : [];
+        $recentSales=$section==='dashboard' ? $this->rows("SELECT d.id,d.day,d.reference,
+            MAX(p.name) AS customer,
+            -SUM(CASE WHEN e.account='sales' THEN e.base_minor ELSE 0 END) AS revenue,
+            SUM(CASE WHEN e.account='service_cost' THEN e.base_minor ELSE 0 END) AS cost,
+            EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) AS reversed
+            FROM documents d JOIN entries e ON e.document_id=d.id
+            LEFT JOIN parties p ON p.branch_id=d.branch_id AND e.account='customer:'||p.id
+            WHERE d.branch_id=? AND d.kind IN ('sale','reissue','refund')
+            GROUP BY d.id ORDER BY d.id DESC LIMIT 10",[$branch]) : [];
+        foreach ($recentSales as &$sale) {
+            $sale['margin']=Amounts::format($sale['revenue']-$sale['cost'],$prec[$info['base']]);
+            $sale['total']=Amounts::format($sale['revenue'],$prec[$info['base']]);
+        } unset($sale);
+        $pending=$section==='dashboard' && $info['role']!=='viewer' ? $this->rows("SELECT r.*,u.name FROM requests r JOIN users u ON u.id=r.requested_by
+            WHERE r.branch_id=? AND r.state='pending' AND (r.requested_by=? OR CAST(? AS INTEGER)=1) ORDER BY r.id",[$branch,$u['id'],$u['is_admin']]) : [];
         foreach ($pending as &$req) { $req['values']=json_decode($req['payload'],true); } unset($req);
         $checks=$this->rows("SELECT s.*,p.name,p.currency,c.decimals FROM supplier_checks s JOIN parties p ON p.id=s.party_id JOIN currencies c ON c.code=p.currency WHERE p.branch_id=? ORDER BY s.day DESC",[$branch]);
         foreach ($checks as &$item) { $item['variance']=Amounts::format($item['statement_minor']-$item['ledger_minor'],$item['decimals']); } unset($item);
@@ -469,7 +468,7 @@ final class OfficeController extends AbstractController
             $preview[$i]['base']=Amounts::format($e['base'],$prec[$info['base']]);
         }
         return $this->render('office.html.twig',compact('section','info','branch','metrics','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','recs','pending','checks','matches')+[
-            'approvalTypes'=>Books::APPROVAL_TYPES,
+            'recentSales'=>$recentSales,'adminTypes'=>Books::ADMIN_TYPES,
             'recentDocs'=>$section==='post' ? $this->rows('SELECT id,reference,day FROM documents d WHERE branch_id=? AND reversal_of IS NULL AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY id DESC LIMIT 100',[$branch]) : [],
             'types'=>Books::TYPES,'key'=>(string)Uuid::v4(),'today'=>gmdate('Y-m-d'),
             'staff'=>$this->rows('SELECT DISTINCT u.id,u.name FROM users u JOIN ledger l ON l.user_id=u.id WHERE branch_id=?',[$branch]),

@@ -28,7 +28,7 @@ final class Kernel extends BaseKernel
     public function getCacheDir(): string
     {
         return ($_SERVER['LARAVEL_STORAGE_PATH'] ?? $this->getProjectDir().'/storage')
-            .'/framework/cache/symfony/invoice-bilingual-v1/'.$this->environment;
+            .'/framework/cache/symfony/sales-desk-v1/'.$this->environment;
     }
 
     protected function configureContainer(ContainerConfigurator $container): void
@@ -78,8 +78,6 @@ final class Kernel extends BaseKernel
     {
         $routes->add('match_items','/branches/{branch}/matches')->controller([OfficeController::class,'matchItems'])
             ->requirements(['branch'=>'\d+'])->methods(['POST']);
-        $routes->add('decision','/branches/{branch}/requests/{id}')->controller([OfficeController::class,'decide'])
-            ->requirements(['branch'=>'\d+','id'=>'\d+'])->methods(['POST']);
         $routes->add('overview','/overview')->controller([OfficeController::class,'overview'])->methods(['GET']);
         $routes->add('control','/control')->controller([OfficeController::class,'control'])->methods(['GET','POST']);
         $routes->add('office','/branches/{branch}/office/{section}')->controller([OfficeController::class,'office'])

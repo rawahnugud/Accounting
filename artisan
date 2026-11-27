@@ -20,6 +20,7 @@ $cli->register('migrate')->setDescription('Apply pending Accounting schema migra
             '2026_11_22_000001_create_treasury' => '001_treasury.sql',
             '2026_11_22_000002_create_branch_staff' => '002_branch_staff.sql',
             '2026_11_27_000003_operations' => '003_operations.sql',
+            '2026_11_27_000004_employee_logins' => '004_employee_logins.sql',
         ];
         $db->exec('BEGIN IMMEDIATE');
         try {
