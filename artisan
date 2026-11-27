@@ -87,26 +87,28 @@ $cli->register('staff:assign')->setDescription('Assign a staff member to a branc
         return 0;
     });
 
-$cli->register('staff:promote')->setDescription('Promote an existing user with a fresh password read from standard input')
+$cli->register('staff:promote')->setDescription('Promote an existing user from the hosting terminal')
     ->addArgument('email', InputArgument::REQUIRED)
+    ->addOption('keep-password', null, InputOption::VALUE_NONE, 'Keep the existing password')
     ->setCode(function ($input, $output): int {
-        $password = stream_get_contents(STDIN);
-        if (strlen($password) < 12 || strlen($password) > 72 || str_contains($password, "\n")) {
-            throw new InvalidArgumentException('Supply a new 12 to 72 byte password using the promotion script.');
+        $keepPassword = $input->getOption('keep-password');
+        $password = $keepPassword ? null : stream_get_contents(STDIN);
+        if (!$keepPassword && (strlen($password) < 12 || strlen($password) > 72 || str_contains($password, "\n"))) {
+            throw new InvalidArgumentException('Supply a 12 to 72 byte password using the promotion script.');
         }
         $db = Database::open();
         $db->beginTransaction();
         $query = $db->prepare('SELECT id,password FROM users WHERE email=?');
         $query->execute([$input->getArgument('email')]);
         $user = $query->fetch();
-        if (!$user || password_verify($password,$user['password'])) {
-            throw new InvalidArgumentException('Check the existing email and use a different password.');
+        if (!$user) {
+            throw new InvalidArgumentException('No staff account has that email address.');
         }
         $db->prepare('UPDATE users SET is_admin=1,password=?,updated_at=CURRENT_TIMESTAMP WHERE id=?')
-            ->execute([password_hash($password,PASSWORD_BCRYPT),$user['id']]);
+            ->execute([$keepPassword ? $user['password'] : password_hash($password,PASSWORD_BCRYPT),$user['id']]);
         $db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'admin granted','cPanel terminal')")->execute([$user['id']]);
         $db->commit();
-        $output->writeln('Administrator access saved. Sign in with the new password.');
+        $output->writeln('Administrator access saved. Sign in again.');
         return 0;
     });
 

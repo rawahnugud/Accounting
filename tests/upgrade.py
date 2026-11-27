@@ -41,6 +41,11 @@ with tempfile.TemporaryDirectory() as tmp:
         assert restored.execute("SELECT amount_minor FROM treasury_transfers").fetchone()==(1575,)
     subprocess.run(["php","artisan","staff:promote","tester@example.invalid"],input=os.urandom(30).hex().encode(),env=env,check=True)
     with sqlite3.connect(target) as db:
+        saved = db.execute("SELECT password FROM users WHERE id=1").fetchone()[0]
+        db.execute("UPDATE users SET is_admin=0 WHERE id=1")
+    subprocess.run(["php","artisan","staff:promote","tester@example.invalid","--keep-password"],stdin=subprocess.DEVNULL,env=env,check=True)
+    with sqlite3.connect(target) as db:
+        assert db.execute("SELECT password FROM users WHERE id=1").fetchone()==(saved,)
         assert db.execute("SELECT is_admin FROM users").fetchone()==(1,)
         assert db.execute("SELECT SUM(base_minor) FROM ledger").fetchone()==(0,)
     code = """require 'bootstrap/runtime.php'; $b=new App\\Accounting\\Books(App\\Database::open(),1,1);

@@ -28,7 +28,7 @@ Once a company and branch are provisioned, run `php artisan staff:assign staff@e
 
 ## Accounting office upgrade on cPanel
 
-In the active PHP 8.1 release run the following. The upgrade creates a consistent, integrity-checked SQLite snapshot outside the web root before applying pending migrations. Supply the email of the existing owner login explicitly. Promotion requests a new password with terminal echo disabled and invalidates old login sessions when they next refresh.
+In the active PHP 8.1 release run the following. The upgrade creates a consistent, integrity-checked SQLite snapshot outside the web root before applying pending migrations. Supply the email of the existing owner login explicitly. The script prompts for the chosen password with terminal echo disabled and invalidates old login sessions when they next refresh.
 
 ```bash
 cd "$HOME/apps/accounting-php81" &&
@@ -37,6 +37,8 @@ git pull --ff-only origin compat/php81 &&
 bash scripts/upgrade-office.sh &&
 bash scripts/promote-admin.sh rawah@midnighttravel.net
 ```
+
+To promote an existing staff login with its current password, run `php artisan staff:promote EMAIL --keep-password` from the private hosting terminal.
 
 Admin can open the control panel to configure companies, branches, currency precision, dated rates, financial accounts, credit limits, staff logins, branch assignments, employee salary terms and leave. Create a bank or safe before posting cash movements. Set foreign rates as **source currency units per one reporting currency unit**. Company reporting currency is shared by its branches. Record verified opening balances and their dates through the posting form.
 
