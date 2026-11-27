@@ -11,9 +11,11 @@
 {% for field, label in {source:'From account', destination:'To account'} %}
 <p><label for="{{ field }}">{{ (label)|ui }}</label><select id="{{ field }}" name="{{ field }}" required>
 <option value="">{{ 'Select an account'|ui }}</option>
-{% for account in accounts %}<option value="{{ account.id }}" {{ old[field]|default('') == account.id ? 'selected' : '' }}>{{ account.name }}</option>{% endfor %}
+{% for account in accounts %}<option value="{{ account.id }}" {{ old[field]|default('') == account.id ? 'selected' : '' }}>{{ account.name }} ({{ (account.kind)|ui }})</option>{% endfor %}
 </select></p>{% endfor %}
 <p><label for="amount">{{ 'Amount ('|ui }}{{ assignment.reporting_currency }})</label>
 <input id="amount" name="amount" inputmode="decimal" value="{{ old.amount|default('') }}" required></p>
-<button>{{ 'Record transfer'|ui }}</button></form>{% endif %}
+<button>{{ 'Record transfer'|ui }}</button></form>
+{% elseif assignment.role != 'cashier' %}<p>{{ 'You have view-only access to this branch.'|ui }}</p>
+{% else %}<p>{{ 'Transfers need at least two accounts in this currency.'|ui }}</p>{% endif %}
 {% endblock %}

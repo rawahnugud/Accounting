@@ -28,7 +28,7 @@ final class Kernel extends BaseKernel
     public function getCacheDir(): string
     {
         return ($_SERVER['LARAVEL_STORAGE_PATH'] ?? $this->getProjectDir().'/storage')
-            .'/framework/cache/symfony/corrections-v1/'.$this->environment;
+            .'/framework/cache/symfony/workflows-v1/'.$this->environment;
     }
 
     protected function configureContainer(ContainerConfigurator $container): void
@@ -69,6 +69,7 @@ final class Kernel extends BaseKernel
         $services = $container->services()->defaults()->autowire()->autoconfigure();
         $services->set(\PDO::class, \PDO::class)->factory([Database::class, 'open']);
         $services->set(Language::class);
+        $services->set(FormExpired::class);
         $services->set(StaffProvider::class);
         $services->set(OfficeController::class)->public();
         $services->set(Staff::class)->public();
@@ -84,6 +85,7 @@ final class Kernel extends BaseKernel
             ->requirements(['branch'=>'\d+','section'=>'dashboard|post|report|export|workbook|statements'])->methods(['GET','POST']);
         $routes->add('login', '/login')->controller([Staff::class, 'login'])->methods(['GET', 'POST']);
         $routes->add('logout', '/logout')->controller([Staff::class, 'logout'])->methods(['POST']);
+        $routes->add('ping', '/ping')->controller([Staff::class, 'ping'])->methods(['GET']);
         $routes->add('health', '/up')->controller([Staff::class, 'health'])->methods(['GET']);
         $routes->add('home', '/')->controller([Staff::class, 'home'])->methods(['GET']);
         $routes->add('branch', '/branches/{branch}')->controller([Staff::class, 'branch'])

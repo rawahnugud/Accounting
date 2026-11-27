@@ -40,4 +40,10 @@
 {% for error in app.flashes('error') %}<p role="alert">{{ error|ui }}</p>{% endfor %}
 {% for message in app.flashes('message') %}<p role="status">{{ message|ui }}</p>{% endfor %}
 {% block content %}{% endblock %}
-</main></div></body></html>
+</main></div>
+{% if app.user %}<script>
+// Keep the session alive while someone is actively filling a form; an idle page still expires as before.
+(()=>{let busy=false;for(const e of ['input','change','click'])addEventListener(e,()=>busy=true,true);
+setInterval(()=>{if(busy){busy=false;fetch('{{ path('ping') }}',{credentials:'same-origin'}).catch(()=>{});}},300000);})();
+</script>{% endif %}
+</body></html>

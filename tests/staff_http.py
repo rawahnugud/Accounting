@@ -75,17 +75,26 @@ with tempfile.TemporaryDirectory() as temp:
             page = call("/branches/1")
             form = {"source":"1","destination":"2","amount":"40.05","_token":field(page,"_token")}
             if role == "viewer":
-                assert "Record a transfer" not in page
+                assert "Record a transfer" not in page and "view-only access" in page
                 call("/control",status=403)
                 call("/branches/2/office/report",status=404)
                 call("/branches/1/office/post",form,403)
                 call("/branches/1/transfers",form,403)
             else:
                 form["request_key"] = field(page,"request_key")
-                call("/branches/1/transfers",{**form,"_token":"invalid"},419)
+                assert "Bank (bank)" in page
+                expired = call("/branches/1/transfers",{**form,"_token":"invalid"})
+                assert "This form expired." in expired and 'value="40.05"' in expired
+                assert "Choose two different accounts." in call("/branches/1/transfers",{**form,"destination":"1"})
+                assert "Use at most 2 decimal places." in call("/branches/1/transfers",{**form,"amount":"1.234"})
+                assert "Too many fractional" not in call("/branches/1/transfers?lang=ar",{**form,"amount":"1.234"})
+                call("/branches/1?lang=en")
                 for _ in range(2):
                     assert "Transfer #1 recorded." in call("/branches/1/transfers",form)
-                assert conn.execute("SELECT actor,amount_minor FROM treasury_transfers").fetchall() == [("staff:2",4005)]
+                assert "Transfer #2 recorded." in call("/branches/1/transfers",{**form,"amount":"1,000.50","request_key":field(page,"request_key")[:-4]+"beef"})
+                assert "Transfer #3 recorded." in call("/branches/1/transfers",{**form,"amount":"١٢٫٥","request_key":field(page,"request_key")[:-4]+"cafe"})
+                assert conn.execute("SELECT actor,amount_minor FROM treasury_transfers").fetchall() == [("staff:2",4005),("staff:2",100050),("staff:2",1250)]
+                call("/ping",status=204)
                 conn.execute("DELETE FROM branch_staff WHERE user_id=2")
                 conn.commit()
                 call("/branches/1/transfers",form,404)
@@ -226,6 +235,22 @@ with tempfile.TemporaryDirectory() as temp:
         print("PASS amendments, failed correction rollback, repeat submission, legacy amount, void, directory deletion and audit")
         print("PASS administrator access, setup, posting preview, confirmation, report and CSV")
         print("PASS staff login, logout, branch isolation, viewer restrictions, cashier posting, CSRF, retry and revocation")
+        post = call("/branches/1/office/post?task=sale")
+        sale = {"_token":token,"request_key":field(post,"request_key"),"day":"2026-01-01","kind":"sale",
+                "reference":"Comma sale","customer":1,"amount":"1,234.50","currency":"USD","mode":"preview"}
+        assert "Confirm posting" in call("/branches/1/office/post",sale)
+        assert "Use at most 2 decimal places." in call("/branches/1/office/post",{**sale,"amount":"١٫٢٣٤"})
+        assert "Confirm posting" in call("/branches/1/office/post",{**sale,"amount":"١٬٢٣٤٫٥"})
+        expired = client.open(request.Request(origin+"/branches/1/office/post",data=parse.urlencode({**sale,"_token":"bad"}).encode(),
+                                              headers={"Referer":origin+"/branches/1/office/post?task=sale"}))
+        assert expired.status == 200 and "This form expired." in expired.read().decode() and "task=sale" in expired.url
+        client = request.build_opener(request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        page = call("/login")
+        for _ in range(8):
+            page = call("/login", {"email":"viewer@example.test","password":"wrong","_token":field(page,"_token")})
+        page = call("/login", {"email":"viewer@example.test","password":password,"_token":field(page,"_token")})
+        assert "Too many sign-in attempts" in page and "Unable to sign in" not in page
+        print("PASS thousands separators, Arabic digits, decimal limits, expired forms, keepalive and sign-in lockout")
     finally:
         server.terminate()
         server.wait()

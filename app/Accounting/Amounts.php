@@ -6,10 +6,21 @@ use DomainException;
 
 final class Amounts
 {
+    /** Accept what staff type: Arabic-Indic digits, Arabic separators, and thousands commas or spaces. */
+    public static function clean(string $value): string
+    {
+        return strtr(trim($value), ['٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9',
+            '٫'=>'.','٬'=>'',','=>'',' '=>'',"\u{A0}"=>'']);
+    }
+
     public static function parse(string $value, int $precision): int
     {
-        if (!preg_match('/\A(\d{1,15})(?:\.(\d+))?\z/D', $value, $m) || strlen($m[2] ?? '') > $precision) {
+        $value = self::clean($value);
+        if (!preg_match('/\A(\d{1,15})(?:\.(\d+))?\z/D', $value, $m)) {
             throw new DomainException('Check the amount and its decimal places.');
+        }
+        if (strlen($m[2] ?? '') > $precision) {
+            throw new DomainException("Use at most $precision decimal places.");
         }
         $minor = (int)($m[1].str_pad($m[2] ?? '', $precision, '0'));
         if ($minor > 999999999999999) {

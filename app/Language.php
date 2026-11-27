@@ -65,6 +65,9 @@ final class Language extends AbstractExtension implements EventSubscriberInterfa
         if (preg_match('/^Transfer #(\d+) recorded\.$/', $text, $m)) {
             return 'تم تسجيل التحويل رقم '.$m[1].'.';
         }
+        if (preg_match('/^Use at most (\d) decimal places\.$/', $text, $m)) {
+            return 'استخدم '.$m[1].' منازل عشرية كحد أقصى.';
+        }
         if (preg_match('/^Check (\w+)\.$/', $text, $m)) {
             return 'تحقق من الحقل: '.($this->arabic[ucfirst($m[1])] ?? $m[1]).'.';
         }

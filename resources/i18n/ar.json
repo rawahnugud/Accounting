@@ -537,5 +537,9 @@
   "Find account by name": "البحث عن الحساب بالاسم",
   "This month": "هذا الشهر",
   "Last month": "الشهر الماضي",
-  "Year to date": "من بداية السنة"
+  "Year to date": "من بداية السنة",
+  "This form expired. Check the details and submit again.": "انتهت صلاحية النموذج. راجع البيانات وأرسلها مرة أخرى.",
+  "Too many sign-in attempts. Wait a minute and try again.": "محاولات دخول كثيرة. انتظر دقيقة ثم حاول مرة أخرى.",
+  "You have view-only access to this branch.": "لديك صلاحية عرض فقط لهذا الفرع.",
+  "Transfers need at least two accounts in this currency.": "يتطلب التحويل حسابين على الأقل بهذه العملة."
 }

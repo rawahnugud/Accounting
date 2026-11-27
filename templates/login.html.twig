@@ -1,7 +1,8 @@
 {% extends 'layout.html.twig' %}
 {% set title = 'Staff sign in' %}
 {% block content %}
-{% if failed %}<p role="alert">{{ 'Unable to sign in with those details.'|ui }}</p>{% endif %}
+{% if throttled %}<p role="alert">{{ 'Too many sign-in attempts. Wait a minute and try again.'|ui }}</p>
+{% elseif failed %}<p role="alert">{{ 'Unable to sign in with those details.'|ui }}</p>{% endif %}
 <form action="{{ path('login') }}" method="post">{{ include('csrf.html.twig') }}
 <p><label for="email">{{ 'Email'|ui }}</label><input id="email" name="email" type="email" autocomplete="username" value="{{ email }}" required></p>
 <p><label for="password">{{ 'Password'|ui }}</label><input id="password" name="password" type="password" autocomplete="current-password" required></p>

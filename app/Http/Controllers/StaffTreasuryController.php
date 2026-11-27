@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Accounting\Amounts;
 use App\Accounting\BranchAccessDenied;
 use App\Accounting\Treasury;
 use PDO;
@@ -10,6 +11,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\Security\Core\Exception\TooManyLoginAttemptsAuthenticationException;
 use Symfony\Component\Security\Http\Authentication\AuthenticationUtils;
 
 final class StaffTreasuryController extends AbstractController
@@ -21,8 +23,9 @@ final class StaffTreasuryController extends AbstractController
         if ($this->getUser()) {
             return $this->redirectToRoute('home');
         }
-        return $this->render('login.html.twig', ['failed' => $auth->getLastAuthenticationError() !== null,
-            'email' => $auth->getLastUsername()]);
+        $error = $auth->getLastAuthenticationError();
+        return $this->render('login.html.twig', ['failed' => $error !== null,
+            'throttled' => $error instanceof TooManyLoginAttemptsAuthenticationException, 'email' => $auth->getLastUsername()]);
     }
 
     public function logout(): never
@@ -33,6 +36,12 @@ final class StaffTreasuryController extends AbstractController
     public function health(): Response
     {
         return new Response('OK');
+    }
+
+    /** Touched by open pages while staff are typing, so a long form does not outlive the session. */
+    public function ping(): Response
+    {
+        return new Response('', 204);
     }
 
     private function assignments(?int $branch = null): array
@@ -87,15 +96,22 @@ final class StaffTreasuryController extends AbstractController
             throw $this->createAccessDeniedException();
         }
         $input = $request->request;
-        if (!$this->isCsrfTokenValid('staff', $input->get('_token'))) {
-            throw new HttpException(419, 'Form expired.');
-        }
         $source = filter_var($input->get('source'), FILTER_VALIDATE_INT);
         $destination = filter_var($input->get('destination'), FILTER_VALIDATE_INT);
         $amount = (string)$input->get('amount');
         $key = (string)$input->get('request_key');
+        if (!$this->isCsrfTokenValid('staff', $input->get('_token'))) {
+            // Keep what was typed; the form gets a fresh token and nothing was posted.
+            $this->addFlash('error', 'This form expired. Check the details and submit again.');
+            $this->addFlash('transfer_input', compact('source', 'destination', 'amount'));
+            return $this->redirectToRoute('branch', ['branch' => $branch]);
+        }
         try {
-            if (!$source || !$destination || $source === $destination || strlen($amount) > 40 ||
+            if ($source && $source === $destination) {
+                throw new \InvalidArgumentException('Choose two different accounts.');
+            }
+            $amount = Amounts::clean($amount);
+            if (!$source || !$destination || strlen($amount) > 40 ||
                 !preg_match('/\A[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\z/i', $key)) {
                 throw new \InvalidArgumentException('Select two different accounts and enter a valid amount.');
             }
