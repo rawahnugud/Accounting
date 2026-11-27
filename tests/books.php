@@ -94,7 +94,14 @@ $post('sale',['customer'=>7,'amount'=>'100','day'=>'2026-01-05']);
 $post('receipt',['customer'=>7,'cash'=>1,'amount'=>'40','day'=>'2026-03-30']);
 same(array_column($reports->aging(1,'2026-03-31'),null,'account')['customer:7']['buckets'],[0,0,0,6000,0]);
 denied(fn()=>$post('receipt',['customer'=>7,'cash'=>1,'amount'=>'1','related'=>$loan]));
-echo "PASS creditor loan and repayment, expense categories, balance sheet totals and aging buckets\n";
+$db->exec("INSERT INTO cash_accounts VALUES (3,1,2,'Other SDG safe','safe','SDG'),(4,1,1,'AED safe','safe','AED')");
+$other=(new Books($db,2,1))->transact(form('deposit',['cash'=>3,'amount'=>'3000','day'=>'2026-01-05']))['id'];
+same((int)$db->query("SELECT base_minor FROM entries WHERE document_id=$other AND account='cash:3'")->fetchColumn(),100);
+$early=$post('deposit',['cash'=>2,'amount'=>'3000','day'=>'2025-12-01']);
+same((int)$db->query("SELECT base_minor FROM entries WHERE document_id=$early AND account='cash:2'")->fetchColumn(),100);
+try { $post('deposit',['cash'=>4,'amount'=>'1']); throw new RuntimeException('AED needs a rate'); }
+catch (DomainException $e) { same(str_starts_with($e->getMessage(),'No exchange rate for AED yet.'),true); }
+echo "PASS creditor loan and repayment, expense categories, balance sheet totals, aging buckets and company-wide rate fallback\n";
 $rent=(int)$db->query("SELECT id FROM documents WHERE kind='fee' AND details LIKE '%Rent%'")->fetchColumn();
 $db->exec("INSERT INTO periods VALUES (1,'2026-03-31')");
 $void=(new App\Accounting\Corrections($db,1,1))->save($rent,['reason'=>'Closed period test'],true);
