@@ -99,6 +99,16 @@ with tempfile.TemporaryDirectory() as temp:
         control = call("/control")
         token = field(control,"_token")
         assert "Admin control panel" in control
+        assert "Recent audit events" not in control and "Leave register" not in control
+        for category, label in [("Company and accounting settings","Recent audit events"),("Staff and permissions","Leave register")]:
+            assert label in call("/control?"+parse.urlencode({"category":category}))
+        dashboard = call("/")
+        assert "Recent sales" in dashboard and "Journal entries" not in dashboard
+        menu = call("/branches/1/office/post")
+        daily = menu.split('<div class="task-links daily">',1)[1].split("</div>",1)[0]
+        assert daily.count("<a ") == 4 and "task=sale" in daily and "task=transfer" in daily
+        assert "task=reverse" in menu and "task=reverse" not in daily
+        assert "Journal entries" in call("/branches/1/office/report")
         for section in ["dashboard","report","post","export","statements"]:
             call("/branches/2/office/"+section)
         call("/control", {"_token":token,"action":"party","branch":1,"kind":"customer","name":"Client A","currency":"USD"})

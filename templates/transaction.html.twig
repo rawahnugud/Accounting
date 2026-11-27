@@ -1,7 +1,9 @@
 {% if not chosen %}
+{% set everyday=['sale','receipt','supplier_payment','transfer'] %}
+<div class="task-links daily">{% for code in everyday %}<a href="{{ path('office',{branch:branch,section:'post',task:code}) }}">{{ tasks[code]|ui }}</a>{% endfor %}</div>
 {% for group,items in groups %}
-<h2>{{ (group)|ui }}</h2>
-<div class="task-links">{% for code,label in items %}{% if info.role=='admin' or code not in adminTypes %}<a href="{{ path('office',{branch:branch,section:'post',task:code}) }}">{{ (label)|ui }}</a>{% endif %}{% endfor %}</div>
+{% set extra=items|filter((label,code)=>code not in everyday and (info.role=='admin' or code not in adminTypes)) %}
+{% if extra %}<details><summary>{{ group|ui }}</summary><div class="task-links">{% for code,label in extra %}<a href="{{ path('office',{branch:branch,section:'post',task:code}) }}">{{ label|ui }}</a>{% endfor %}</div></details>{% endif %}
 {% endfor %}
 {% elseif preview %}
 <p><strong>{{ (chosen)|ui }}</strong> · {{ f.reference }} · {{ f.day }}</p>
