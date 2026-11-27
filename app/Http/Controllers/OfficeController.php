@@ -113,7 +113,7 @@ final class OfficeController extends AbstractController
         switch ($act) {
         case 'supplier reconciliation':
             $p=$this->rows("SELECT p.*,c.decimals FROM parties p JOIN currencies c ON c.code=p.currency WHERE p.id=? AND p.kind='supplier'",[$f['party']])[0] ?? throw new DomainException('Choose a supplier.');
-            $day=Books::date($f['day']);
+            $day=Books::date($this->field($f,'day'));
             $balance=$this->rows('SELECT -COALESCE(SUM(native_minor),0) AS total FROM ledger WHERE branch_id=? AND account=? AND day<=?',[$p['branch_id'],'supplier:'.$p['id'],$day])[0]['total'];
             $amount=$this->field($f,'amount');
             if (!preg_match('/^-?[0-9]+(?:\.[0-9]+)?$/D',$amount)) { throw new DomainException('Invalid statement amount.'); }
@@ -152,7 +152,7 @@ final class OfficeController extends AbstractController
             $minor=Amounts::parse($this->field($f,'amount'),$row['decimals']);
             $planned=$this->rows('SELECT COALESCE(SUM(amount_minor),0) AS planned FROM schedules WHERE document_id=?',[$f['document']])[0]['planned'];
             if ($minor+$planned>abs($row['original_minor'])) { throw new DomainException('Installments exceed original obligation.'); }
-            $run('INSERT INTO schedules(document_id,due,amount_minor) VALUES (?,?,?)',[$f['document'],Books::date($f['day']),$minor]); break;
+            $run('INSERT INTO schedules(document_id,due,amount_minor) VALUES (?,?,?)',[$f['document'],Books::date($this->field($f,'day')),$minor]); break;
         case 'company':
             $run('INSERT INTO companies(name,reporting_currency) VALUES (?,?)',[$this->field($f,'name'),$currency]); break;
         case 'branch':
@@ -166,9 +166,11 @@ final class OfficeController extends AbstractController
             }
             break;
         case 'rate':
+            $company=$this->rows('SELECT c.reporting_currency FROM branches b JOIN companies c ON c.id=b.company_id WHERE b.id=?',[$branch])[0] ?? throw new DomainException('Check the selected record.');
+            if ($currency===$company['reporting_currency']) { throw new DomainException('The reporting currency always uses a rate of 1. Choose a foreign currency.'); }
             $rate=Amounts::parse($this->field($f,'rate'),6);
             if (!$rate || $rate>1000000000000) { throw new DomainException('Rate must be positive and at most one million.'); }
-            $run('INSERT INTO rates VALUES (?,?,?,?)',[$branch,$currency,Books::date($f['day']),$f['rate']]); break;
+            $run('INSERT INTO rates VALUES (?,?,?,?)',[$branch,$currency,Books::date($this->field($f,'day')),$f['rate']]); break;
         case 'cash':
             $run('INSERT INTO cash_accounts(company_id,branch_id,name,kind,currency) SELECT company_id,id,?,?,? FROM branches WHERE id=?',
                 [$this->field($f,'name'),$f['kind'],$currency,$branch]); break;
@@ -202,19 +204,19 @@ final class OfficeController extends AbstractController
             }
             break;
         case 'leave':
-            $start=Books::date($f['start']); $end=Books::date($f['end']);
+            $start=Books::date($this->field($f,'start')); $end=Books::date($this->field($f,'end'));
             if ($end<$start) { throw new DomainException('End date precedes start date.'); }
             $run("INSERT INTO staff_leave(employee_id,starts,ends,reason) SELECT id,?,?,? FROM parties WHERE id=? AND kind='employee'",[$start,$end,$note,$f['employee']]); break;
         case 'leave decision':
             if (!in_array($f['state'],['approved','declined'],true)) { throw new DomainException('Invalid leave decision.'); }
             $run("UPDATE staff_leave SET state=? WHERE id=? AND state='pending'",[$f['state'],$f['leave_id']]); break;
         case 'close period':
-            $date=Books::date($f['day']);
+            $date=Books::date($this->field($f,'day'));
             if ($date>gmdate('Y-m-d')) { throw new DomainException('Choose today or an earlier date.'); }
             $run('INSERT INTO periods VALUES (?,?) ON CONFLICT(branch_id) DO UPDATE SET closed_through=excluded.closed_through WHERE excluded.closed_through>periods.closed_through',[$branch,$date]); break;
         case 'reconcile':
             $cash=$this->rows('SELECT a.*,c.decimals FROM cash_accounts a JOIN currencies c ON c.code=a.currency WHERE a.id=?',[$f['cash']])[0] ?? throw new DomainException('Choose an account.');
-            $date=Books::date($f['day']);
+            $date=Books::date($this->field($f,'day'));
             $balance=$this->rows('SELECT COALESCE(SUM(native_minor),0) AS balance FROM ledger WHERE account=? AND branch_id=? AND day<=?',['cash:'.$cash['id'],$cash['branch_id'],$date])[0]['balance'];
             $amount=$this->field($f,'amount');
             if (!preg_match('/^-?[0-9]+(?:\.[0-9]+)?$/D',$amount)) { throw new DomainException('Invalid statement balance.'); }

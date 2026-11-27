@@ -102,6 +102,22 @@ with tempfile.TemporaryDirectory() as temp:
         for section in ["dashboard","report","post","export","statements"]:
             call("/branches/2/office/"+section)
         call("/control", {"_token":token,"action":"party","branch":1,"kind":"customer","name":"Client A","currency":"USD"})
+        for setup in ["cash","currency","rate","reconcile","party","credit limit","supplier limit",
+                      "supplier reconciliation","installment","user","access","salary terms","leave",
+                      "leave decision","company profile","company name","service category","numbering","close period"]:
+            query = parse.urlencode({"setup":setup})
+            assert 'name="action" value="'+setup+'"' in call("/control?"+query)
+        assert "Check day." in call("/control?setup=rate", dict(_token=token, action="rate",
+                                   branch=1, currency="SDG", rate="2500"))
+        assert "Register supplier" in control
+        supplier_form = call("/control?setup=party&kind=supplier")
+        assert re.search(r'<option value="supplier" selected', supplier_form)
+        directory = call("/control")
+        assert re.search(r'href="[^"]*account=customer(?:%3A|:)1[^"]*">Client A</a>', directory)
+        invalid_rate = call("/control?setup=rate", dict(_token=token, action="rate", branch=1,
+                            currency="USD", day="2026-01-01", rate="2500"))
+        assert "The reporting currency always uses a rate of 1." in invalid_rate
+        assert conn.execute("SELECT COUNT(*) FROM rates WHERE currency='USD'").fetchone()==(0,)
         post = call("/branches/1/office/post?task=sale")
         data = {"_token":token,"request_key":field(post,"request_key"),"day":"2026-01-01","kind":"sale",
                 "reference":"Test sale","customer":1,"amount":"15.25","currency":"USD","mode":"preview"}
