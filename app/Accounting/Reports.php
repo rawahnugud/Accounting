@@ -27,6 +27,15 @@ final class Reports
             AND account IN ('sales','expense','service_cost','salary_expense','fx') GROUP BY account",[$branch,$from,$to]);
         $profit=[];
         foreach ($income as $r) { $profit[$r['account']]=-$r['amount']; }
+        // Split other expenses by the category saved on fee and creditor obligation documents; a reversal uses its original's category.
+        if (isset($profit['expense'])) {
+            unset($profit['expense']);
+            foreach ($rows("SELECT COALESCE(o.details,d.details) AS details,SUM(e.base_minor) AS amount FROM entries e JOIN documents d ON d.id=e.document_id
+                LEFT JOIN documents o ON o.id=d.reversal_of WHERE d.branch_id=? AND d.day BETWEEN ? AND ? AND e.account='expense' GROUP BY 1",[$branch,$from,$to]) as $r) {
+                $label=(json_decode($r['details'],true)['category'] ?? '') ?: 'expense';
+                $profit[$label]=($profit[$label] ?? 0)-$r['amount'];
+            }
+        }
         $balances=$rows("SELECT account,SUM(base_minor) AS amount FROM ledger WHERE branch_id=? AND day<=? GROUP BY account",[$branch,$to]);
         $sheet=['Cash'=>0,'Receivables'=>0,'Staff advances'=>0,'Supplier prepayments'=>0,'Customer deposits'=>0,
             'Supplier payables'=>0,'Creditor obligations'=>0,'Payroll payable'=>0,'Owner equity'=>0,'Accumulated earnings'=>0];
@@ -43,6 +52,10 @@ final class Reports
             default: $sheet['Accumulated earnings']-=$amount;
             }
         }
+        $assets=$sheet['Cash']+$sheet['Receivables']+$sheet['Staff advances']+$sheet['Supplier prepayments'];
+        $claims=array_sum(array_slice($sheet,4));
+        $sheet=array_slice($sheet,0,4)+['Total assets'=>$assets]+array_slice($sheet,4)+['Total liabilities and equity'=>$claims];
+        if ($assets!==$claims) { $sheet['Unbalanced difference']=$assets-$claims; }
         $flows=$rows("SELECT kind,SUM(base_minor) AS amount FROM ledger WHERE branch_id=? AND day BETWEEN ? AND ? AND account LIKE 'cash:%' GROUP BY kind",[$branch,$from,$to]);
         $performance=$rows("SELECT COALESCE(NULLIF($dimension,''),'Unspecified') AS label,
             -SUM(CASE WHEN e.account='sales' THEN e.base_minor ELSE 0 END) AS sales,
@@ -62,5 +75,35 @@ final class Reports
         }
         $exposure=$rows('SELECT currency,SUM(native_minor) AS native,SUM(base_minor) AS base FROM ledger WHERE branch_id=? AND day<=? AND instr(account,\':\')>0 GROUP BY currency',[$branch,$to]);
         return compact('group','profit','sheet','flows','performance','exposure');
+    }
+
+    /** Open customer and supplier items by days past due. Supplier amounts are shown as positive payables. */
+    public function aging(int $branch,string $today): array
+    {
+        $q=$this->db->prepare("SELECT account,currency,due,outstanding_minor FROM open_items WHERE branch_id=? AND outstanding_minor<>0
+            AND (account LIKE 'customer:%' OR account LIKE 'supplier:%') ORDER BY account");
+        $q->execute([$branch]);
+        $now=new \DateTimeImmutable($today);
+        $aging=[];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $gap=(new \DateTimeImmutable($r['due']))->diff($now);
+            $days=$gap->invert ? -$gap->days : $gap->days;
+            $bucket=match(true) {$days<=0=>0,$days<=30=>1,$days<=60=>2,$days<=90=>3,default=>4};
+            $amount=(str_starts_with($r['account'],'supplier:') ? -1 : 1)*(int)$r['outstanding_minor'];
+            $aging[$r['account']] ??= ['account'=>$r['account'],'currency'=>$r['currency'],'buckets'=>[0,0,0,0,0],'total'=>0,'unapplied'=>0];
+            if ($amount>0) { $aging[$r['account']]['buckets'][$bucket]+=$amount; } else { $aging[$r['account']]['unapplied']-=$amount; }
+            $aging[$r['account']]['total']+=$amount;
+        }
+        // Payments and credits not yet matched settle the oldest amounts first; any excess shows as a credit in the first column.
+        foreach ($aging as &$row) {
+            for ($i=4; $i>=0 && $row['unapplied']>0; $i--) {
+                $used=min($row['buckets'][$i],$row['unapplied']);
+                $row['buckets'][$i]-=$used;
+                $row['unapplied']-=$used;
+            }
+            $row['buckets'][0]-=$row['unapplied'];
+            unset($row['unapplied']);
+        } unset($row);
+        return array_values($aging);
     }
 }

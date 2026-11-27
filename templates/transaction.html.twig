@@ -14,7 +14,7 @@
 {% else %}
 {% set fields={
  sale:'customer supplier',reissue:'customer supplier',refund:'customer supplier',receipt:'customer cash',customer_refund:'customer cash',
- supplier_payment:'supplier cash',supplier_refund:'supplier cash',liability:'creditor',repayment:'creditor cash',payroll:'employee',
+ supplier_payment:'supplier cash',supplier_refund:'supplier cash',liability:'creditor',loan:'creditor cash',repayment:'creditor cash',payroll:'employee',
  salary_payment:'employee cash',advance:'employee cash',recovery:'employee',transfer:'cash destination',opening_party:'customer supplier'
 } %}
 {% set accounts=(fields[kind]|default('cash'))|split(' ') %}
@@ -38,10 +38,12 @@
 {% endfor %}
 {% if kind!='reverse' %}<label>{{ (kind=='sale'?'Selling price':(kind=='reissue'?'Additional selling price':'Amount'))|ui }}<input name="amount" inputmode="decimal" value="{{ f.amount|default('') }}" {{ not travel and kind!='payroll'?'required' }}><small>{{ ('cash' in accounts?'Use the currency of the selected bank or safe.':(kind=='payroll'?'Leave blank to use the employee’s saved salary.':''))|ui }}</small></label>
 {% if 'cash' not in accounts %}<label>{{ 'Amount currency'|ui }}<select name="currency">{% for code,n in prec %}<option {{ f.currency|default(info.base)==code?'selected' }}>{{ code }}</option>{% endfor %}</select></label>{% endif %}{% endif %}
+{% if kind in ['fee','liability'] %}<label>{{ 'Expense category'|ui }}<select name="category"><option value="">{{ 'Other expenses'|ui }}</option>{% for c in expenseCategories %}<option value="{{ c }}" {{ f.category|default('')==c?'selected' }}>{{ c|ui }}</option>{% endfor %}</select></label>{% endif %}
 <label>{{ 'Transaction date'|ui }}<input type="date" name="day" value="{{ f.day|default(today) }}" required></label>
 <label>{{ 'Reference'|ui }}<input name="reference" maxlength="160" placeholder="{{ 'Generated if blank'|ui }}" value="{{ f.reference|default('') }}"></label>
 {% if linked %}<label>{{ 'Original document'|ui }} {{ (kind not in ['reverse','reissue','refund']?'(optional)')|ui }}<input name="related" inputmode="numeric" pattern="[0-9]+" list="documents" placeholder="{{ 'Choose or enter the D-number digits'|ui }}" value="{{ f.related|default('') }}" {{ kind in ['reverse','reissue','refund']?'required' }}>
-<datalist id="documents">{% for d in recentDocs %}<option value="{{ d.id }}">D-{{ d.id }} · {{ d.reference }} · {{ d.day }}</option>{% endfor %}</datalist>
+{% set openFor={receipt:['customer:',['sale','reissue','opening_party']],supplier_payment:['supplier:',['sale','reissue','opening_party']],salary_payment:['employee:',['payroll']],repayment:['creditor:',['liability','loan']],customer_refund:['customer:',['refund']],supplier_refund:['supplier:',['refund']]}[kind]|default(null) %}
+<datalist id="documents">{% if openFor %}{% for o in aging|filter(o=>o.account starts with openFor[0] and o.kind in openFor[1]) %}<option value="{{ o.id }}">D-{{ o.id }} · {{ names[o.account]|default(o.account) }} · {{ o.reference }} · {{ 'Outstanding'|ui }} {{ o.amount }} {{ o.currency }}</option>{% endfor %}{% else %}{% for d in recentDocs %}<option value="{{ d.id }}">D-{{ d.id }} · {{ d.reference }} · {{ d.day }}</option>{% endfor %}{% endif %}</datalist>
 {% if kind not in ['reverse','reissue','refund'] %}<small>{{ 'Choose an invoice to reduce its outstanding balance, or leave blank for a payment on account.'|ui }}</small>{% endif %}</label>{% endif %}
 {% if travel %}
 <label>{{ 'Service'|ui }}<select name="service"><option value="">{{ 'Choose service'|ui }}</option>{% if f.service|default('') and f.service not in services|map(s=>s.name) %}<option value="{{ f.service }}" selected>{{ f.service|ui }}</option>{% endif %}{% for s in services %}<option value="{{ s.name }}" {{ f.service|default('')==s.name?'selected' }}>{{ s.name|ui }}</option>{% endfor %}</select></label>

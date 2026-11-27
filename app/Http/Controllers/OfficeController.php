@@ -94,7 +94,7 @@ final class OfficeController extends AbstractController
             'users'=>$this->rows('SELECT id,name,email,is_admin FROM users ORDER BY name'),
             'parties'=>$this->rows('SELECT p.*,b.name AS branch,t.job_title,t.salary_minor,k.limit_minor,c.decimals FROM parties p JOIN branches b ON b.id=p.branch_id JOIN currencies c ON c.code=p.currency LEFT JOIN employee_terms t ON t.employee_id=p.id LEFT JOIN credit_limits k ON k.party_id=p.id ORDER BY b.name,p.name'),
             'profiles'=>$this->rows('SELECT p.*,c.name FROM company_profiles p JOIN companies c ON c.id=p.company_id'),
-            'obligations'=>$this->rows("SELECT d.id,d.reference,b.name FROM documents d JOIN branches b ON b.id=d.branch_id WHERE kind='liability' AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id)"),
+            'obligations'=>$this->rows("SELECT d.id,d.reference,b.name FROM documents d JOIN branches b ON b.id=d.branch_id WHERE kind IN ('liability','loan') AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id)"),
             'banks'=>$this->rows('SELECT a.*,b.name AS branch FROM cash_accounts a JOIN branches b ON b.id=a.branch_id'),
             'audit'=>$this->rows('SELECT a.*,u.name FROM audit_events a JOIN users u ON u.id=a.user_id ORDER BY a.id DESC LIMIT 100')
         ]);
@@ -140,6 +140,10 @@ final class OfficeController extends AbstractController
                 $old['import']=$this->rows('SELECT * FROM imported_bank_details WHERE cash_id=?',[$id]);
                 $this->db->prepare('DELETE FROM imported_bank_details WHERE cash_id=?')->execute([$id]);
             }
+            if (!$bank) {
+                $this->db->prepare('DELETE FROM credit_limits WHERE party_id=?')->execute([$id]);
+                $this->db->prepare('DELETE FROM employee_terms WHERE employee_id=?')->execute([$id]);
+            }
             $run("DELETE FROM $table WHERE id=?",[$id]);
             return json_encode(['account'=>$key,'removed'=>$old,'reason'=>$reason],JSON_UNESCAPED_UNICODE);
         case 'supplier reconciliation':
@@ -181,7 +185,7 @@ final class OfficeController extends AbstractController
                 $run('INSERT INTO credit_limits VALUES (?,?) ON CONFLICT(party_id) DO UPDATE SET limit_minor=excluded.limit_minor',[$account['id'],$minor]);
             } break;
         case 'installment':
-            $row=$this->rows("SELECT o.original_minor,c.decimals FROM open_items o JOIN currencies c ON c.code=o.currency WHERE id=? AND kind='liability'",[$f['document']])[0] ?? throw new DomainException('Choose an active obligation.');
+            $row=$this->rows("SELECT o.original_minor,c.decimals FROM open_items o JOIN currencies c ON c.code=o.currency WHERE id=? AND kind IN ('liability','loan')",[$f['document']])[0] ?? throw new DomainException('Choose an active obligation.');
             $minor=Amounts::parse($this->field($f,'amount'),$row['decimals']);
             $planned=$this->rows('SELECT COALESCE(SUM(amount_minor),0) AS planned FROM schedules WHERE document_id=?',[$f['document']])[0]['planned'];
             if ($minor+$planned>abs($row['original_minor'])) { throw new DomainException('Installments exceed original obligation.'); }
@@ -195,7 +199,7 @@ final class OfficeController extends AbstractController
             $code=strtoupper($this->field($f,'code'));
             $run('INSERT INTO currencies VALUES (?,?)',[$code,$f['precision']]);
             if (trim($f['initial_rate'] ?? '')!=='') {
-                $this->setup(['action'=>'rate','currency'=>$code,'branch'=>$branch,'rate'=>$f['initial_rate'],'day'=>gmdate('Y-m-d')],$actor);
+                $this->setup(['action'=>'rate','currency'=>$code,'branch'=>$branch,'rate'=>$f['initial_rate'],'day'=>date('Y-m-d')],$actor);
             }
             break;
         case 'rate':
@@ -203,7 +207,7 @@ final class OfficeController extends AbstractController
             if ($currency===$company['reporting_currency']) { throw new DomainException('The reporting currency always uses a rate of 1. Choose a foreign currency.'); }
             $rate=Amounts::parse($this->field($f,'rate'),6);
             if (!$rate || $rate>1000000000000) { throw new DomainException('Rate must be positive and at most one million.'); }
-            $run('INSERT INTO rates VALUES (?,?,?,?)',[$branch,$currency,Books::date($this->field($f,'day')),$f['rate']]); break;
+            $run('INSERT INTO rates VALUES (?,?,?,?)',[$branch,$currency,Books::date($this->field($f,'day')),Amounts::clean($f['rate'])]); break;
         case 'cash':
             $run('INSERT INTO cash_accounts(company_id,branch_id,name,kind,currency) SELECT company_id,id,?,?,? FROM branches WHERE id=?',
                 [$this->field($f,'name'),$f['kind'],$currency,$branch]); break;
@@ -245,7 +249,7 @@ final class OfficeController extends AbstractController
             $run("UPDATE staff_leave SET state=? WHERE id=? AND state='pending'",[$f['state'],$f['leave_id']]); break;
         case 'close period':
             $date=Books::date($this->field($f,'day'));
-            if ($date>gmdate('Y-m-d')) { throw new DomainException('Choose today or an earlier date.'); }
+            if ($date>date('Y-m-d')) { throw new DomainException('Choose today or an earlier date.'); }
             $run('INSERT INTO periods VALUES (?,?) ON CONFLICT(branch_id) DO UPDATE SET closed_through=excluded.closed_through WHERE excluded.closed_through>periods.closed_through',[$branch,$date]); break;
         case 'reconcile':
             $cash=$this->rows('SELECT a.*,c.decimals FROM cash_accounts a JOIN currencies c ON c.code=a.currency WHERE a.id=?',[$f['cash']])[0] ?? throw new DomainException('Choose an account.');
@@ -269,7 +273,7 @@ final class OfficeController extends AbstractController
         $this->db->exec('BEGIN IMMEDIATE');
         try {
             $actor=(int)$u['id'];
-            $today=gmdate('Y-m-d');
+            $today=date('Y-m-d');
             if ($this->rows('SELECT 1 FROM periods WHERE branch_id=? AND closed_through>=?',[$branch,$today])) {
                 throw new DomainException('Today is in a closed period.');
             }
@@ -363,6 +367,15 @@ final class OfficeController extends AbstractController
             $f=$r->request->all();
             if (array_filter($f,'is_array')) { throw new HttpException(422,'Invalid form fields.'); }
             $mode=$f['mode'] ?? '';
+            if ($mode==='discard') {
+                $q=$this->db->prepare("UPDATE requests SET state='discarded',decision_by=? WHERE branch_id=? AND id=? AND state='pending' AND (requested_by=? OR CAST(? AS INTEGER)=1)");
+                $q->execute([$u['id'],$branch,(int)($f['draft'] ?? 0),$u['id'],(int)$u['is_admin']]);
+                if ($q->rowCount()) {
+                    $this->db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'discard entry',?)")->execute([$u['id'],'Request '.(int)$f['draft']]);
+                    $this->addFlash('message','Unfinished entry discarded.');
+                }
+                return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'dashboard']);
+            }
             if (isset($f['amend'])) {
                 if (!$u['is_admin']) { throw $this->createAccessDeniedException(); }
                 if (!in_array($mode,['void','save'],true)) { throw new HttpException(422,'Invalid action.'); }
@@ -423,7 +436,7 @@ final class OfficeController extends AbstractController
             foreach ($accounts as $key=>$item) { $groups[$item['group']][$key]=$item; }
             $selected=$query->get('account','');
             if ($selected!=='' && !isset($accounts[$selected])) { throw $this->createNotFoundException(); }
-            $today=gmdate('Y-m-d');
+            $today=date('Y-m-d');
             $from=$query->get('from') ?: substr($today,0,8).'01';
             $to=$query->get('to') ?: $today;
             $period=$query->get('period','');
@@ -496,11 +509,12 @@ final class OfficeController extends AbstractController
         }
         if ($section==='statements') {
             try {
-                $from=Books::date($query->get('from') ?: substr(gmdate('Y-m-d'),0,4).'-01-01');
-                $to=Books::date($query->get('to') ?: gmdate('Y-m-d'));
+                $from=Books::date($query->get('from') ?: substr(date('Y-m-d'),0,4).'-01-01');
+                $to=Books::date($query->get('to') ?: date('Y-m-d'));
                 if ($from>$to) { throw new DomainException('Start date is after end date.'); }
             } catch (DomainException $e) { throw new HttpException(422,$e->getMessage()); }
-            $report=(new Reports($this->db))->statements($branch,$from,$to,$query->get('group','service'));
+            $report=(new Reports($this->db))->statements($branch,$from,$to,$query->get('group','service'))+['today'=>date('Y-m-d')];
+            $report['aging']=(new Reports($this->db))->aging($branch,$report['today']);
             $netProfit=Amounts::format(array_sum($report['profit']),$prec[$info['base']]);
             foreach (['profit','sheet'] as $part) {
                 foreach ($report[$part] as &$v) { $v=Amounts::format($v,$prec[$info['base']]); } unset($v);
@@ -510,6 +524,11 @@ final class OfficeController extends AbstractController
                 foreach (['sales','cost'] as $col) { $row[$col]=Amounts::format($row[$col],$prec[$info['base']]); }
             } unset($row);
             foreach ($report['flows'] as &$row) { $row['amount']=Amounts::format($row['amount'],$prec[$info['base']]); } unset($row);
+            foreach ($report['aging'] as &$row) {
+                $row['name']=$names[$row['account']] ?? $row['account'];
+                foreach ($row['buckets'] as &$v) { $v=Amounts::format($v,$prec[$row['currency']]); } unset($v);
+                $row['total']=Amounts::format($row['total'],$prec[$row['currency']]);
+            } unset($row);
             foreach ($report['exposure'] as &$row) {
                 $row['native']=Amounts::format($row['native'],$prec[$row['currency']]);
                 $row['base']=Amounts::format($row['base'],$prec[$info['base']]);
@@ -522,13 +541,16 @@ final class OfficeController extends AbstractController
             if (($value=$query->get($key,''))!=='') { $where[]=$clause; $args[]=$value; }
         }
         if (($term=trim($query->get('search','')))!=='') {
-            $where[]="(instr(lower(reference),lower(?))>0 OR number IN (SELECT 'D-'||id FROM documents WHERE branch_id=? AND instr(lower(details),lower(?))>0))";
-            array_push($args,$term,$branch,$term);
+            // Details are saved with json_encode defaults, so Arabic and "/" are escaped (\u0623, \/).
+            $where[]="(instr(lower(reference),lower(?))>0 OR number IN (SELECT 'D-'||id FROM documents WHERE branch_id=? AND (instr(lower(details),lower(?))>0 OR instr(lower(details),lower(?))>0)))";
+            array_push($args,$term,$branch,$term,substr(json_encode($term),1,-1));
         }
         $condition=implode(' AND ',$where);
         $totals=$this->rows("SELECT account,currency,SUM(native_minor) AS native,SUM(base_minor) AS base FROM ledger WHERE $condition GROUP BY account,currency ORDER BY account",$args);
-        $limit=$section==='dashboard'?' LIMIT 12':'';
+        $limit=match($section) {'dashboard'=>' LIMIT 12','report'=>' LIMIT 501',default=>''};
         $lines=$this->rows("SELECT * FROM ledger WHERE $condition ORDER BY day DESC,number DESC,account$limit",$args);
+        $truncated=$section==='report' && count($lines)>500;
+        if ($truncated) { array_pop($lines); }
         foreach ($lines as &$l) {
             $l['name']=$names[$l['account']] ?? $l['account'];
             $l['amount']=Amounts::format($l['native_minor'],$prec[$l['currency']]);
@@ -578,13 +600,26 @@ final class OfficeController extends AbstractController
         } unset($t);
         $metrics['Gross profit']=$metrics['Sales']-$metrics['Supplier costs'];
         $metrics['Cash after obligations']=$metrics['Cash']-$metrics['Supplier payables']-$metrics['Other obligations'];
+        if ($section==='dashboard') {
+            $month=array_column($this->rows("SELECT account,SUM(base_minor) AS base FROM ledger WHERE branch_id=? AND day BETWEEN ? AND ?
+                AND account IN ('sales','service_cost') GROUP BY account",[$branch,date('Y-m-01'),date('Y-m-d')]),'base','account');
+            $metrics['Sales this month']=-(int)($month['sales'] ?? 0);
+            $metrics['Gross profit this month']=$metrics['Sales this month']-(int)($month['service_cost'] ?? 0);
+        }
         foreach ($metrics as &$v) { $v=Amounts::format($v,$prec[$info['base']]); } unset($v);
         $doc=$query->getInt('doc') ? ($this->rows('SELECT d.*,EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) AS voided,u.name AS staff,n.label,cp.address,cp.contact,cp.registration FROM documents d JOIN users u ON u.id=d.user_id LEFT JOIN document_numbers n ON n.document_id=d.id JOIN branches b ON b.id=d.branch_id LEFT JOIN company_profiles cp ON cp.company_id=b.company_id WHERE d.branch_id=? AND d.id=?',[$branch,$query->getInt('doc')])[0] ?? null) : null;
         $aging=$this->rows('SELECT * FROM open_items WHERE branch_id=? AND outstanding_minor<>0 ORDER BY due,id',[$branch]);
         foreach ($aging as &$item) { $item['amount']=Amounts::format($item['outstanding_minor'],$prec[$item['currency']]); } unset($item);
         $schedule=$this->rows("SELECT s.*,p.name,p.currency FROM schedules s JOIN documents d ON d.id=s.document_id JOIN entries e ON e.document_id=d.id
             JOIN parties p ON e.account='creditor:'||p.id WHERE d.branch_id=? AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY s.due",[$branch]);
-        foreach ($schedule as &$item) { $item['amount']=Amounts::format($item['amount_minor'],$prec[$item['currency']]); } unset($item);
+        // Repayments settle installments in due order; only installments not yet covered stay on the list.
+        $paid=array_column($this->rows("SELECT id,abs(original_minor)-abs(outstanding_minor) AS paid FROM open_items WHERE branch_id=? AND kind IN ('liability','loan')",[$branch]),'paid','id');
+        $planned=[];
+        foreach ($schedule as $i=>&$item) {
+            $planned[$item['document_id']]=($planned[$item['document_id']] ?? 0)+$item['amount_minor'];
+            if ($planned[$item['document_id']]<=($paid[$item['document_id']] ?? 0)) { unset($schedule[$i]); continue; }
+            $item['amount']=Amounts::format($item['amount_minor'],$prec[$item['currency']]);
+        } unset($item);
         $matches=$info['role']==='admin' ? $this->rows('SELECT id,debit_doc,credit_doc,account FROM matches WHERE branch_id=? ORDER BY id DESC',[$branch]) : [];
         $recentSales=$section==='dashboard' ? $this->rows("SELECT d.id,d.day,d.reference,
             MAX(p.name) AS customer,
@@ -617,9 +652,9 @@ final class OfficeController extends AbstractController
             $preview[$i]['base']=Amounts::format($e['base'],$prec[$info['base']]);
         }
         return $this->render('office.html.twig',compact('section','info','branch','metrics','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','recs','pending','checks','matches')+[
-            'recentSales'=>$recentSales,'adminTypes'=>Books::ADMIN_TYPES,
+            'recentSales'=>$recentSales,'adminTypes'=>Books::ADMIN_TYPES,'truncated'=>$truncated,'expenseCategories'=>Books::EXPENSE_CATEGORIES,
             'recentDocs'=>$section==='post' ? $this->rows('SELECT id,reference,day FROM documents d WHERE branch_id=? AND reversal_of IS NULL AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY id DESC LIMIT 100',[$branch]) : [],
-            'types'=>Books::TYPES,'key'=>(string)Uuid::v4(),'today'=>gmdate('Y-m-d'),
+            'types'=>Books::TYPES,'key'=>(string)Uuid::v4(),'today'=>date('Y-m-d'),
             'staff'=>$this->rows('SELECT DISTINCT u.id,u.name FROM users u JOIN ledger l ON l.user_id=u.id WHERE branch_id=?',[$branch]),
 
         ]);
