@@ -146,7 +146,7 @@ final class OfficeController extends AbstractController
             $p=$this->rows("SELECT p.*,c.decimals FROM parties p JOIN currencies c ON c.code=p.currency WHERE p.id=? AND p.kind='supplier'",[$f['party']])[0] ?? throw new DomainException('Choose a supplier.');
             $day=Books::date($this->field($f,'day'));
             $balance=$this->rows('SELECT -COALESCE(SUM(native_minor),0) AS total FROM ledger WHERE branch_id=? AND account=? AND day<=?',[$p['branch_id'],'supplier:'.$p['id'],$day])[0]['total'];
-            $amount=$this->field($f,'amount');
+            $amount=Amounts::clean($this->field($f,'amount'));
             if (!preg_match('/^-?[0-9]+(?:\.[0-9]+)?$/D',$amount)) { throw new DomainException('Invalid statement amount.'); }
             $minor=Amounts::parse(ltrim($amount,'-'),$p['decimals'])*(str_starts_with($amount,'-')?-1:1);
             $run('INSERT INTO supplier_checks(party_id,day,statement_minor,ledger_minor,user_id) VALUES (?,?,?,?,?)',[$p['id'],$day,$minor,$balance,$actor]); break;
@@ -251,7 +251,7 @@ final class OfficeController extends AbstractController
             $cash=$this->rows('SELECT a.*,c.decimals FROM cash_accounts a JOIN currencies c ON c.code=a.currency WHERE a.id=?',[$f['cash']])[0] ?? throw new DomainException('Choose an account.');
             $date=Books::date($this->field($f,'day'));
             $balance=$this->rows('SELECT COALESCE(SUM(native_minor),0) AS balance FROM ledger WHERE account=? AND branch_id=? AND day<=?',['cash:'.$cash['id'],$cash['branch_id'],$date])[0]['balance'];
-            $amount=$this->field($f,'amount');
+            $amount=Amounts::clean($this->field($f,'amount'));
             if (!preg_match('/^-?[0-9]+(?:\.[0-9]+)?$/D',$amount)) { throw new DomainException('Invalid statement balance.'); }
             $statement=Amounts::parse(ltrim($amount,'-'),$cash['decimals'])*(str_starts_with($amount,'-')?-1:1);
             $run('INSERT INTO reconciliations(cash_id,day,statement_minor,ledger_minor,user_id) VALUES (?,?,?,?,?)',[$cash['id'],$date,$statement,$balance,$actor]); break;
