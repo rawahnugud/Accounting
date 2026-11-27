@@ -90,10 +90,20 @@ final class Reports
             $days=$gap->invert ? -$gap->days : $gap->days;
             $bucket=match(true) {$days<=0=>0,$days<=30=>1,$days<=60=>2,$days<=90=>3,default=>4};
             $amount=(str_starts_with($r['account'],'supplier:') ? -1 : 1)*(int)$r['outstanding_minor'];
-            $aging[$r['account']] ??= ['account'=>$r['account'],'currency'=>$r['currency'],'buckets'=>[0,0,0,0,0],'total'=>0];
-            $aging[$r['account']]['buckets'][$bucket]+=$amount;
+            $aging[$r['account']] ??= ['account'=>$r['account'],'currency'=>$r['currency'],'buckets'=>[0,0,0,0,0],'total'=>0,'unapplied'=>0];
+            if ($amount>0) { $aging[$r['account']]['buckets'][$bucket]+=$amount; } else { $aging[$r['account']]['unapplied']-=$amount; }
             $aging[$r['account']]['total']+=$amount;
         }
+        // Payments and credits not yet matched settle the oldest amounts first; any excess shows as a credit in the first column.
+        foreach ($aging as &$row) {
+            for ($i=4; $i>=0 && $row['unapplied']>0; $i--) {
+                $used=min($row['buckets'][$i],$row['unapplied']);
+                $row['buckets'][$i]-=$used;
+                $row['unapplied']-=$used;
+            }
+            $row['buckets'][0]-=$row['unapplied'];
+            unset($row['unapplied']);
+        } unset($row);
         return array_values($aging);
     }
 }

@@ -50,7 +50,9 @@ final class Corrections
         $this->db->exec('BEGIN IMMEDIATE');
         try {
             $doc=$this->original($id);
-            $reversal=$this->books->postWithinTransaction(['kind'=>'reverse','related'=>$id,'day'=>$doc['day'],
+            // A document in a closed period is reversed today, leaving the closed books unchanged.
+            $closed=$this->books->rows('SELECT closed_through FROM periods WHERE branch_id=?',[$this->branch])[0]['closed_through'] ?? '';
+            $reversal=$this->books->postWithinTransaction(['kind'=>'reverse','related'=>$id,'day'=>$doc['day']>$closed?$doc['day']:date('Y-m-d'),
                 'reference'=>"Void D-$id",'note'=>$reason,'request_key'=>(string)Uuid::v4()])['id'];
             $result=$reversal;
             $detail="D-$id; reversal D-$reversal";

@@ -88,11 +88,19 @@ $profit=$march['profit']; ksort($profit); same($profit,['Rent'=>-4000,'expense'=
 same($march['sheet']['Total assets'],$march['sheet']['Total liabilities and equity']);
 same(isset($march['sheet']['Unbalanced difference']),false);
 $aged=array_column($reports->aging(1,'2026-03-31'),null,'account');
-$open=fn($where)=>(int)$db->query("SELECT COALESCE(SUM(outstanding_minor),0) FROM open_items WHERE account='customer:1' AND $where")->fetchColumn();
-same($aged['customer:1']['total'],$open('1'));
-same($aged['customer:1']['buckets'][3],$open("due BETWEEN '2026-01-01' AND '2026-01-30'"));
+foreach ($aged as $row) { same(array_sum($row['buckets']),$row['total']); }
+$db->exec("INSERT INTO parties VALUES (7,1,'customer','Aging','USD','')");
+$post('sale',['customer'=>7,'amount'=>'100','day'=>'2026-01-05']);
+$post('receipt',['customer'=>7,'cash'=>1,'amount'=>'40','day'=>'2026-03-30']);
+same(array_column($reports->aging(1,'2026-03-31'),null,'account')['customer:7']['buckets'],[0,0,0,6000,0]);
+denied(fn()=>$post('receipt',['customer'=>7,'cash'=>1,'amount'=>'1','related'=>$loan]));
 echo "PASS creditor loan and repayment, expense categories, balance sheet totals and aging buckets\n";
-$db->exec("INSERT INTO periods VALUES (1,'2026-12-31')");
+$rent=(int)$db->query("SELECT id FROM documents WHERE kind='fee' AND details LIKE '%Rent%'")->fetchColumn();
+$db->exec("INSERT INTO periods VALUES (1,'2026-03-31')");
+$void=(new App\Accounting\Corrections($db,1,1))->save($rent,['reason'=>'Closed period test'],true);
+same($db->query("SELECT day FROM documents WHERE id=$void")->fetchColumn(),date('Y-m-d'));
+echo "PASS void in a closed period posts the reversal on today's date\n";
+$db->exec("INSERT OR REPLACE INTO periods VALUES (1,'2026-12-31')");
 denied(fn()=>$post('opening',['cash'=>1,'amount'=>'100']));
 same((int)$db->query('SELECT COUNT(*) FROM (SELECT document_id FROM entries GROUP BY document_id HAVING SUM(base_minor)<>0)')->fetchColumn(),0);
 echo "PASS posting preview, exact FX, immutable balanced books, allocation, repeat submission, transfer, liability, payroll, ticket history, access and closed period\n";

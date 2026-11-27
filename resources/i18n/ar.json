@@ -569,5 +569,8 @@
   "No open customer or supplier balances.": "لا توجد أرصدة مفتوحة للعملاء أو الموردين.",
   "Sales this month": "مبيعات هذا الشهر",
   "Gross profit this month": "مجمل ربح هذا الشهر",
-  "Showing the latest 500 lines. Use the filters above, or download the CSV for every line.": "يتم عرض آخر 500 سطر. استخدم عوامل التصفية أعلاه، أو نزّل ملف CSV لجميع الأسطر."
+  "Showing the latest 500 lines. Use the filters above, or download the CSV for every line.": "يتم عرض آخر 500 سطر. استخدم عوامل التصفية أعلاه، أو نزّل ملف CSV لجميع الأسطر.",
+  "Discard": "تجاهل",
+  "Unfinished entry discarded.": "تم تجاهل الإدخال غير المكتمل.",
+  "Choose an open invoice for this account.": "اختر فاتورة مفتوحة لهذا الحساب."
 }

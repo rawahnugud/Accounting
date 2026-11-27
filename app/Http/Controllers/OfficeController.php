@@ -140,6 +140,10 @@ final class OfficeController extends AbstractController
                 $old['import']=$this->rows('SELECT * FROM imported_bank_details WHERE cash_id=?',[$id]);
                 $this->db->prepare('DELETE FROM imported_bank_details WHERE cash_id=?')->execute([$id]);
             }
+            if (!$bank) {
+                $this->db->prepare('DELETE FROM credit_limits WHERE party_id=?')->execute([$id]);
+                $this->db->prepare('DELETE FROM employee_terms WHERE employee_id=?')->execute([$id]);
+            }
             $run("DELETE FROM $table WHERE id=?",[$id]);
             return json_encode(['account'=>$key,'removed'=>$old,'reason'=>$reason],JSON_UNESCAPED_UNICODE);
         case 'supplier reconciliation':
@@ -363,6 +367,15 @@ final class OfficeController extends AbstractController
             $f=$r->request->all();
             if (array_filter($f,'is_array')) { throw new HttpException(422,'Invalid form fields.'); }
             $mode=$f['mode'] ?? '';
+            if ($mode==='discard') {
+                $q=$this->db->prepare("UPDATE requests SET state='discarded',decision_by=? WHERE branch_id=? AND id=? AND state='pending' AND (requested_by=? OR CAST(? AS INTEGER)=1)");
+                $q->execute([$u['id'],$branch,(int)($f['draft'] ?? 0),$u['id'],(int)$u['is_admin']]);
+                if ($q->rowCount()) {
+                    $this->db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'discard entry',?)")->execute([$u['id'],'Request '.(int)$f['draft']]);
+                    $this->addFlash('message','Unfinished entry discarded.');
+                }
+                return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'dashboard']);
+            }
             if (isset($f['amend'])) {
                 if (!$u['is_admin']) { throw $this->createAccessDeniedException(); }
                 if (!in_array($mode,['void','save'],true)) { throw new HttpException(422,'Invalid action.'); }
@@ -599,7 +612,14 @@ final class OfficeController extends AbstractController
         foreach ($aging as &$item) { $item['amount']=Amounts::format($item['outstanding_minor'],$prec[$item['currency']]); } unset($item);
         $schedule=$this->rows("SELECT s.*,p.name,p.currency FROM schedules s JOIN documents d ON d.id=s.document_id JOIN entries e ON e.document_id=d.id
             JOIN parties p ON e.account='creditor:'||p.id WHERE d.branch_id=? AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY s.due",[$branch]);
-        foreach ($schedule as &$item) { $item['amount']=Amounts::format($item['amount_minor'],$prec[$item['currency']]); } unset($item);
+        // Repayments settle installments in due order; only installments not yet covered stay on the list.
+        $paid=array_column($this->rows("SELECT id,abs(original_minor)-abs(outstanding_minor) AS paid FROM open_items WHERE branch_id=? AND kind IN ('liability','loan')",[$branch]),'paid','id');
+        $planned=[];
+        foreach ($schedule as $i=>&$item) {
+            $planned[$item['document_id']]=($planned[$item['document_id']] ?? 0)+$item['amount_minor'];
+            if ($planned[$item['document_id']]<=($paid[$item['document_id']] ?? 0)) { unset($schedule[$i]); continue; }
+            $item['amount']=Amounts::format($item['amount_minor'],$prec[$item['currency']]);
+        } unset($item);
         $matches=$info['role']==='admin' ? $this->rows('SELECT id,debit_doc,credit_doc,account FROM matches WHERE branch_id=? ORDER BY id DESC',[$branch]) : [];
         $recentSales=$section==='dashboard' ? $this->rows("SELECT d.id,d.day,d.reference,
             MAX(p.name) AS customer,

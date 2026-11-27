@@ -272,6 +272,7 @@ final class Books
                 if ($matched) { throw new DomainException('Post this payment on account and use Match open items for the remaining balance.'); }
                 $out=$this->one("SELECT SUM(e.native_minor) AS native,SUM(e.base_minor) AS base FROM entries e JOIN documents d ON d.id=e.document_id
                     WHERE e.account=? AND (d.id=? OR (d.related_id=? AND d.kind IN ('receipt','supplier_payment','salary_payment','repayment','customer_refund','supplier_refund') AND NOT EXISTS (SELECT 1 FROM documents x WHERE x.reversal_of=d.id)))",[$account,$related,$related]);
+                if (!$out['native']) { throw new DomainException('Choose an open invoice for this account.'); }
                 foreach ($lines as &$entry) {
                     if ($entry['account']!==$account) { continue; }
                     if (!$out['native'] || ($out['native']>0)===($entry['native']>0) || abs($entry['native'])>abs($out['native'])) {

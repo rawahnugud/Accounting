@@ -242,6 +242,18 @@ with tempfile.TemporaryDirectory() as temp:
         assert not conn.execute("SELECT id FROM parties WHERE id=?",(party,)).fetchone()
         call("/control",dict(edit,action="Delete unused account",record=1))
         assert conn.execute("SELECT id FROM parties WHERE id=1").fetchone()
+        call("/control",dict(_token=token,action="party",branch=1,kind="customer",name="Limited",currency="USD"))
+        limited=conn.execute("SELECT id FROM parties WHERE name='Limited'").fetchone()[0]
+        call("/control",dict(_token=token,action="credit limit",party=limited,amount="100"))
+        call("/control",dict(edit,action="Delete unused account",record=limited))
+        assert not conn.execute("SELECT id FROM parties WHERE id=?",(limited,)).fetchone()
+        stale=str(uuid.uuid4())
+        conn.execute("INSERT INTO requests(branch_id,requested_by,request_key,payload) VALUES (1,2,?,?)",(stale,json.dumps(dict(kind="fee",amount="1"))))
+        conn.commit()
+        stale_id=conn.execute("SELECT id FROM requests WHERE request_key=?",(stale,)).fetchone()[0]
+        assert "Discard" in call("/")
+        call(endpoint,dict(_token=token,mode="discard",draft=stale_id))
+        assert conn.execute("SELECT state FROM requests WHERE id=?",(stale_id,)).fetchone()==("discarded",)
         print("PASS amendments, failed correction rollback, repeat submission, legacy amount, void, directory deletion and audit")
         print("PASS administrator access, setup, posting preview, confirmation, report and CSV")
         print("PASS staff login, logout, branch isolation, viewer restrictions, cashier posting, CSRF, retry and revocation")
