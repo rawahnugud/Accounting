@@ -167,13 +167,13 @@ tr:last-child>td,tr:last-child>th{border-bottom:0}
 tbody tr:hover td,tr:hover>td{background:#fdf9fb}
 td bdi{white-space:nowrap}
 /* Amount columns (cells holding only a <bdi> value) align to the end, headers too. */
-td:not(:first-child):has(>bdi:only-child),
-table:not(.statement-table):has(td:nth-child(2)>bdi:only-child) tr>th:nth-child(2),
-table:not(.statement-table):has(td:nth-child(3)>bdi:only-child) tr>th:nth-child(3),
-table:not(.statement-table):has(td:nth-child(4)>bdi:only-child) tr>th:nth-child(4),
-table:not(.statement-table):has(td:nth-child(5)>bdi:only-child) tr>th:nth-child(5),
-table:not(.statement-table):has(td:nth-child(6)>bdi:only-child) tr>th:nth-child(6),
-table:not(.statement-table):has(td:nth-child(7)>bdi:only-child) tr>th:nth-child(7){text-align:end}
+td:not(:first-child):has(>:is(bdi,strong):only-child),
+table:not(.statement-table):has(td:nth-child(2)>:is(bdi,strong):only-child) tr>th:nth-child(2),
+table:not(.statement-table):has(td:nth-child(3)>:is(bdi,strong):only-child) tr>th:nth-child(3),
+table:not(.statement-table):has(td:nth-child(4)>:is(bdi,strong):only-child) tr>th:nth-child(4),
+table:not(.statement-table):has(td:nth-child(5)>:is(bdi,strong):only-child) tr>th:nth-child(5),
+table:not(.statement-table):has(td:nth-child(6)>:is(bdi,strong):only-child) tr>th:nth-child(6),
+table:not(.statement-table):has(td:nth-child(7)>:is(bdi,strong):only-child) tr>th:nth-child(7){text-align:end}
 /* Simple lists, e.g. bank and safe accounts on the branch page */
 main>ul{list-style:none;padding:0;margin:0 0 1.5rem;display:grid;gap:.6rem;grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr))}
 main>ul>li{padding:.9rem 1.1rem;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);font-weight:600}
