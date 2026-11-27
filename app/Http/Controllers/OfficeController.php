@@ -120,8 +120,10 @@ final class OfficeController extends AbstractController
             $minor=Amounts::parse(ltrim($amount,'-'),$p['decimals'])*(str_starts_with($amount,'-')?-1:1);
             $run('INSERT INTO supplier_checks(party_id,day,statement_minor,ledger_minor,user_id) VALUES (?,?,?,?,?)',[$p['id'],$day,$minor,$balance,$actor]); break;
         case 'company profile':
+            $registration=trim($f['registration'] ?? '');
+            if (strlen($registration)>200) { throw new DomainException('Check registration.'); }
             $run('INSERT INTO company_profiles VALUES (?,?,?,?) ON CONFLICT(company_id) DO UPDATE SET address=excluded.address,contact=excluded.contact,registration=excluded.registration',
-                [$f['company'],$this->field($f,'address'),$this->field($f,'contact'),$this->field($f,'registration')]); break;
+                [$f['company'],$this->field($f,'address'),$this->field($f,'contact'),$registration]); break;
         case 'numbering':
             $prefix=strtoupper($this->field($f,'prefix'));
             $next=filter_var($f['next'] ?? '',FILTER_VALIDATE_INT,['options'=>['min_range'=>1,'max_range'=>999999999]]);
@@ -463,7 +465,8 @@ final class OfficeController extends AbstractController
                 $row['native']=Amounts::format($row['native'],$prec[$row['currency']]);
                 $row['base']=Amounts::format($row['base'],$prec[$info['base']]);
             } unset($row);
-            return $this->render('statements.html.twig',compact('report','info','from','to','names','branch','netProfit'));
+            $profile=$this->rows('SELECT p.* FROM company_profiles p JOIN branches b ON b.company_id=p.company_id WHERE b.id=?',[$branch])[0] ?? [];
+            return $this->render('statements.html.twig',compact('report','profile','info','from','to','names','branch','netProfit'));
         }
         $where=['branch_id=?']; $args=[$branch];
         foreach (['from'=>'day>=?','to'=>'day<=?','account'=>'account=?','user'=>'user_id=?','doc'=>"number='D-'||?",'number'=>'number=?'] as $key=>$clause) {
