@@ -67,25 +67,41 @@ with tempfile.TemporaryDirectory() as temp:
             creds = {"email":role+"@example.test","password":"wrong","_token":field(login,"_token")}
             assert "Unable to sign in" in call("/login",creds)
             creds["password"] = password
-            assert "Your branches" in call("/login",creds)
+            assert "Bank and safe accounts" in call("/login",creds), "single branch opens directly"
             call("/branches/2",status=404)
             page = call("/branches/1")
             form = {"source":"1","destination":"2","amount":"40.05","_token":field(page,"_token")}
             if role == "viewer":
-                assert "Record a transfer" not in page
+                assert "Record a transfer" not in page and "view-only access" in page
                 call("/branches/1/transfers",form,403)
             else:
+                assert "Bank (bank)" in page and "No transfers recorded yet." in page
                 form["request_key"] = field(page,"request_key")
-                call("/branches/1/transfers",{**form,"_token":"invalid"},419)
+                expired = call("/branches/1/transfers",{**form,"_token":"invalid"})
+                assert "Your session expired. Please check" in expired and 'value="40.05"' in expired
+                assert field(expired,"request_key") == form["request_key"]
+                assert "To account different from the From account" in call("/branches/1/transfers",{**form,"destination":"1"})
+                assert "USD allows at most 2 decimal places." in call("/branches/1/transfers",{**form,"amount":"1.234"})
                 for _ in range(2):
-                    assert "Transfer #1 recorded." in call("/branches/1/transfers",form)
-                assert conn.execute("SELECT actor,amount_minor FROM treasury_transfers").fetchall() == [("staff:2",4005)]
+                    done = call("/branches/1/transfers",form)
+                    assert "Transfer #1 recorded: 40.05 USD from Bank to Safe." in done, done
+                assert "<td>40.05 USD</td><td>cashier</td>" in done
+                done = call("/branches/1/transfers",{**form,"amount":"1,000.50","request_key":field(done,"request_key")})
+                assert "Transfer #2 recorded: 1,000.50 USD" in done
+                assert conn.execute("SELECT actor,amount_minor FROM treasury_transfers").fetchall() == [("staff:2",4005),("staff:2",100050)]
                 conn.execute("DELETE FROM branch_staff WHERE user_id=2")
                 conn.commit()
                 call("/branches/1/transfers",form,404)
             assert "Staff sign in" in call("/logout",{"_token":field(page,"_token")})
             assert "Staff sign in" in call("/branches/1")
-        print("PASS staff login, logout, branch isolation, viewer restrictions, cashier posting, CSRF, retry and revocation")
+        assert "Your session expired. Sign in" in call("/branches/1/transfers",form)
+        locked = call("/login")
+        for _ in range(8):
+            locked = call("/login",{"email":"viewer@example.test","password":"wrong","_token":field(locked,"_token")})
+            if "Too many sign-in attempts" in locked: break
+        assert "Too many sign-in attempts. Try again in" in locked
+        print("PASS staff login, single-branch landing, logout, branch isolation, viewer restrictions, cashier posting, "
+              "messages, recent transfers, expired sessions, login lockout, CSRF, retry and revocation")
     finally:
         server.terminate()
         server.wait()

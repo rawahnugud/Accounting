@@ -1,5 +1,5 @@
 # Midnight Travel Accounting
-Staff sign in with a provisioned account and see their assigned branches. Viewers can inspect bank and safe accounts. Cashiers can post same-branch transfers in the company's reporting currency. The signed-in user ID is recorded on each transfer. Branch permission is checked again inside the SQLite write transaction.
+Staff sign in with a provisioned account and land on their branch (a branch list appears only if someone is assigned to several). Viewers can inspect bank and safe accounts. Cashiers can post same-branch transfers in the company's reporting currency. The signed-in user ID is recorded on each transfer. Branch permission is checked again inside the SQLite write transaction.
 
 ## Local setup
 This development runtime uses Laravel 12 and requires PHP 8.2 or later, Composer and PDO SQLite. Use an isolated accounting directory with its own database. From a fresh checkout run:
@@ -13,7 +13,7 @@ php artisan migrate
 php artisan serve
 ```
 
-A fresh database has no users or financial setup. Once company, branch and account records are provisioned, run `php artisan staff:assign staff@example.test 1 cashier` with the intended email and branch ID. A new user is prompted for a name and password. Use `viewer` for read-only access. Company/branch configuration screens and opening balances are pending.
+A fresh database has no users or financial setup. Once company, branch and account records are provisioned, run `php artisan staff:assign staff@example.test cashier` with the intended email. The branch is picked automatically while only one branch exists; otherwise add its ID as a third argument. A new user is prompted for a name and password. Use `viewer` for read-only access. Company/branch configuration screens and opening balances are pending.
 
 Run `php tests/treasury.php` for the posting checks and `python3 tests/staff_http.py` for the local HTTP integration test with synthetic accounts and a temporary database. Python is only used by the test.
 

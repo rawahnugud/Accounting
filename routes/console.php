@@ -5,12 +5,16 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
-Artisan::command('staff:assign {email} {branch} {role}', function () {
+Artisan::command('staff:assign {email} {role} {branch?}', function () {
     $email = $this->argument('email');
     $role = $this->argument('role');
-    $branch = DB::table('branches')->find($this->argument('branch'));
+    // Single-branch deployment: the branch ID is only needed when more than one branch exists.
+    $branches = DB::table('branches');
+    $branch = $this->argument('branch') === null
+        ? ($branches->count() === 1 ? $branches->first() : null)
+        : $branches->find($this->argument('branch'));
     if (!$branch || !filter_var($email, FILTER_VALIDATE_EMAIL) || !in_array($role, ['viewer','cashier'], true)) {
-        $this->error('Enter a valid email, existing branch ID, and viewer or cashier.');
+        $this->error('Enter a valid email and viewer or cashier. Add a branch ID when more than one branch exists.');
         return 1;
     }
     $user = User::firstOrNew(['email' => $email]);

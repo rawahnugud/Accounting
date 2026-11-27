@@ -40,7 +40,26 @@ final class StaffTreasuryController
 
     public function home(Request $request)
     {
-        return view('accounting.branches', ['branches' => $this->assignments($request)->orderBy('company')->orderBy('b.name')->get()]);
+        $branches = $this->assignments($request)->orderBy('company')->orderBy('b.name')->get();
+        // Single-branch deployment: skip the picker when there is only one branch to open.
+        if ($branches->count() === 1) {
+            return redirect('/branches/'.$branches->first()->id);
+        }
+        return view('accounting.branches', compact('branches'));
+    }
+
+    private static function money(int $minor, int $decimals): string
+    {
+        if ($decimals === 0) {
+            return number_format($minor);
+        }
+        $digits = str_pad((string)$minor, $decimals + 1, '0', STR_PAD_LEFT);
+        return number_format((int)substr($digits, 0, -$decimals)).'.'.substr($digits, -$decimals);
+    }
+
+    private static function decimals(string $currency): int
+    {
+        return (int)DB::table('currencies')->where('code', $currency)->value('decimals');
     }
 
     public function branch(Request $request, int $branch)
@@ -48,7 +67,16 @@ final class StaffTreasuryController
         $assignment = $this->assignments($request)->where('b.id', $branch)->firstOrFail();
         $accounts = DB::table('cash_accounts')->where('branch_id', $branch)
             ->where('currency', $assignment->reporting_currency)->orderBy('name')->get();
-        return view('accounting.branch', compact('assignment', 'accounts'));
+        $decimals = self::decimals($assignment->reporting_currency);
+        $transfers = DB::table('treasury_transfers as t')
+            ->join('cash_accounts as src', 'src.id', '=', 't.source_id')
+            ->join('cash_accounts as dst', 'dst.id', '=', 't.destination_id')
+            ->leftJoin('users as u', DB::raw("'staff:' || u.id"), '=', 't.actor')
+            ->where('t.branch_id', $branch)->orderByDesc('t.id')->limit(20)
+            ->get(['t.id', 't.posted_at', 't.currency', 't.amount_minor', 'src.name as source',
+                'dst.name as destination', DB::raw('coalesce(u.name, t.actor) as actor')])
+            ->each(fn($t) => $t->amount = self::money((int)$t->amount_minor, $decimals));
+        return view('accounting.branch', compact('assignment', 'accounts', 'transfers'));
     }
 
     public function transfer(Request $request, int $branch)
@@ -58,22 +86,28 @@ final class StaffTreasuryController
         $data = $request->validate([
             'source' => 'required|integer', 'destination' => 'required|integer|different:source',
             'amount' => 'required|string|max:40', 'request_key' => 'required|uuid',
-        ]);
+        ], ['destination.different' => 'Choose a To account different from the From account.'],
+            ['source' => 'From account', 'destination' => 'To account']);
+        // Accept typed thousands separators such as "1,000.50" or "1 000".
+        $amount = str_replace([',', ' '], '', $data['amount']);
         $accounts = DB::table('cash_accounts')->where('branch_id', $branch)
             ->where('currency', $assignment->reporting_currency)
-            ->whereIn('id', [$data['source'], $data['destination']])->count();
-        abort_unless($accounts === 2, 422);
+            ->whereIn('id', [$data['source'], $data['destination']])->pluck('name', 'id');
+        abort_unless($accounts->count() === 2, 422);
         try {
             $id = (new Treasury(DB::connection()->getPdo()))->transferForStaff(
                 (int)$request->user()->getAuthIdentifier(), $assignment->company_id, $branch,
                 $data['source'], $data['destination'], $assignment->reporting_currency,
-                $data['amount'], $data['request_key']
+                $amount, $data['request_key']
             );
         } catch (BranchAccessDenied $e) {
             abort(403);
         } catch (\InvalidArgumentException|\DomainException $e) {
             throw ValidationException::withMessages(['amount' => $e->getMessage()]);
         }
-        return redirect('/branches/'.$branch)->with('message', 'Transfer #'.$id.' recorded.');
+        $minor = (int)DB::table('treasury_transfers')->where('id', $id)->value('amount_minor');
+        return redirect('/branches/'.$branch)->with('message', sprintf('Transfer #%d recorded: %s %s from %s to %s.',
+            $id, self::money($minor, self::decimals($assignment->reporting_currency)), $assignment->reporting_currency,
+            $accounts[$data['source']], $accounts[$data['destination']]));
     }
 }

@@ -68,7 +68,7 @@ final class Treasury
         }
         $fraction = $match[2] ?? '';
         if (strlen($fraction) > (int) $decimals) {
-            throw new InvalidArgumentException('Too many fractional digits for this currency.');
+            throw new InvalidArgumentException(sprintf('%s allows at most %d decimal places.', $currency, $decimals));
         }
         $digits = ltrim($match[1] . str_pad($fraction, (int) $decimals, '0'), '0');
         if ($digits === '' || (string)(int)$digits !== $digits) {
