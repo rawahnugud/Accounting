@@ -76,10 +76,9 @@ form.card{margin-bottom:1.25rem}
 details{min-width:0;padding:0;margin:0 0 1rem;overflow:hidden}
 details>summary{list-style:none;display:flex;align-items:center;gap:.6rem;padding:1rem 1.25rem;cursor:pointer;font-weight:650;color:var(--ink);user-select:none}
 details>summary::-webkit-details-marker{display:none}
-details>summary::before{content:"";flex:none;width:.5rem;height:.5rem;border-inline-end:2px solid var(--wine);border-bottom:2px solid var(--wine);transform:rotate(-45deg);transition:transform .15s}
-html[dir=rtl] details>summary::before{transform:rotate(45deg)}
-details[open]>summary::before{transform:rotate(45deg)}
-html[dir=rtl] details[open]>summary::before{transform:rotate(45deg)}
+details>summary::before{content:"";flex:none;width:.5rem;height:.5rem;border-right:2px solid var(--wine);border-bottom:2px solid var(--wine);transform:rotate(-45deg);transition:transform .15s}
+html[dir=rtl] details>summary::before{transform:rotate(135deg)}
+details[open]>summary::before,html[dir=rtl] details[open]>summary::before{transform:rotate(45deg)}
 details>summary:hover{background:#fdf9fb}
 details[open]>summary{color:var(--wine);border-bottom:1px solid var(--line)}
 details>:not(summary){margin-inline:1.25rem}
@@ -132,6 +131,7 @@ details .task-links{margin-bottom:1.25rem}
 label{display:block;font-size:.85rem;font-weight:650;color:var(--ink)}
 form label+label{margin-top:.8rem}
 .grid>label+label{margin:0}
+.grid>button{align-self:end;justify-self:start;margin:0}
 input,select,textarea,button{font:inherit}
 input,select,textarea{display:block;width:100%;min-width:0;margin-top:.35rem;padding:.62rem .8rem;min-height:2.65rem;border:1px solid var(--line-2);border-radius:var(--radius-sm);background:#fff;color:var(--ink);font-size:.95rem;font-weight:400;transition:border-color .15s,box-shadow .15s}
 textarea{min-height:5rem;resize:vertical}
@@ -163,9 +163,21 @@ th{background:#fbf7f9;color:var(--muted);font-size:.74rem;font-weight:700;letter
 html[dir=rtl] th{letter-spacing:0;font-size:.82rem}
 tr:not(:first-child)>th{background:#fbf7f9;color:var(--ink);font-size:.9rem;letter-spacing:0;text-transform:none}
 td{overflow-wrap:normal}
-tr:last-child td{border-bottom:0}
+tr:last-child>td,tr:last-child>th{border-bottom:0}
 tbody tr:hover td,tr:hover>td{background:#fdf9fb}
 td bdi{white-space:nowrap}
+/* Amount columns (cells holding only a <bdi> value) align to the end, headers too. */
+td:not(:first-child):has(>:is(bdi,strong):only-child),
+table:not(.statement-table):has(td:nth-child(2)>:is(bdi,strong):only-child) tr>th:nth-child(2),
+table:not(.statement-table):has(td:nth-child(3)>:is(bdi,strong):only-child) tr>th:nth-child(3),
+table:not(.statement-table):has(td:nth-child(4)>:is(bdi,strong):only-child) tr>th:nth-child(4),
+table:not(.statement-table):has(td:nth-child(5)>:is(bdi,strong):only-child) tr>th:nth-child(5),
+table:not(.statement-table):has(td:nth-child(6)>:is(bdi,strong):only-child) tr>th:nth-child(6),
+table:not(.statement-table):has(td:nth-child(7)>:is(bdi,strong):only-child) tr>th:nth-child(7){text-align:end}
+/* Simple lists, e.g. bank and safe accounts on the branch page */
+main>ul{list-style:none;padding:0;margin:0 0 1.5rem;display:grid;gap:.6rem;grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr))}
+main>ul>li{padding:.9rem 1.1rem;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);font-weight:600}
+.staff main>form:not(.card):not(.grid):has(select){background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:1.25rem 1.35rem;margin-bottom:1.25rem}
 
 /* Messages */
 [role=alert],[role=status]{display:flex;align-items:flex-start;gap:.6rem;margin:0 0 1.25rem;padding:.8rem 1rem;border-radius:var(--radius-sm);font-weight:500}
@@ -195,10 +207,11 @@ td bdi{white-space:nowrap}
 .statement-figures{background:var(--rose);padding:1rem 1.3rem;margin:1rem 0;border-radius:var(--radius-sm);border-inline-start:4px solid var(--wine)}
 .statement-paper .scroll{box-shadow:none}
 .statement-table td:nth-last-child(-n+3),.statement-table th:nth-last-child(-n+3){text-align:end}
+.statement-table td:first-child,.statement-table th:nth-last-child(n+4){text-align:start}
 .statement-table .closing>*{font-weight:700;background:#fbf7f9}
 .statement-paper footer{border-top:1px solid var(--line);margin-top:1.5rem;padding-top:.7rem;color:var(--muted);font-size:.85rem}
 .internal-check{max-width:1080px;margin:1.25rem auto}
-.report-values th{font-weight:600}
+.report-values th,.report-values tr:not(:first-child)>th{background:none;color:var(--ink);font-size:.92rem;font-weight:600;letter-spacing:0;text-transform:none;white-space:normal}
 .report-values td{text-align:end}
 .report-values .closing>*{font-weight:700;border-top:2px solid var(--wine)}
 
@@ -212,6 +225,7 @@ td bdi{white-space:nowrap}
 .guest .page-heading{text-align:center;margin-bottom:1.4rem}
 .guest h1{font-size:1.4rem}
 .guest form p{margin:0 0 1rem}
+.guest .context,.guest .actions{justify-content:center}
 .guest form button{width:100%;min-height:2.85rem;margin-top:.4rem;font-size:.95rem}
 
 /* Phones and tablets */

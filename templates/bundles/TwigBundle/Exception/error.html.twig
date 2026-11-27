@@ -1,0 +1,12 @@
+{# Branded error page. Strings are inline so i18n/ar.json stays untouched. #}
+{% extends 'layout.html.twig' %}
+{% set ar = app.request.locale == 'ar' %}
+{% set messages = {
+ 403: ar ? 'ليست لديك صلاحية لفتح هذه الصفحة.' : 'You do not have access to this page.',
+ 404: ar ? 'لم يتم العثور على هذه الصفحة.' : 'This page could not be found.'
+} %}
+{% set title = messages[status_code]|default(ar ? 'حدث خطأ. حاول مرة أخرى.' : 'Something went wrong. Please try again.') %}
+{% block content %}
+<p class="context"><span>{{ status_code }}</span></p>
+<div class="actions"><a href="{{ path('home') }}">{{ 'Dashboard'|ui }}</a></div>
+{% endblock %}
