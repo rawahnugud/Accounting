@@ -42,7 +42,9 @@ final class StaffTreasuryController extends AbstractController
             $user->execute([$email]);
             $recent = $this->db->prepare("SELECT 1 FROM password_reset_tokens WHERE email = ? AND created_at > datetime('now','-2 minutes')");
             $recent->execute([$email]);
-            if ($user->fetchColumn() && !$recent->fetchColumn()) {
+            // The link is built from the Host header, so only send it for this site's own host names; a forged host would leak the token.
+            $hosts = array_filter([parse_url((string)($_SERVER['APP_URL'] ?? ''), PHP_URL_HOST), 'accounts.midnighttravel.net', 'localhost', '127.0.0.1']);
+            if (in_array(strtolower($request->getHost()), $hosts, true) && $user->fetchColumn() && !$recent->fetchColumn()) {
                 $token = bin2hex(random_bytes(32));
                 $this->db->prepare("INSERT INTO password_reset_tokens(email, token, created_at) VALUES (?, ?, datetime('now'))
                     ON CONFLICT(email) DO UPDATE SET token = excluded.token, created_at = excluded.created_at")->execute([$email, hash('sha256', $token)]);
