@@ -642,6 +642,9 @@ final class OfficeController extends AbstractController
             $l['name']=$names[$l['account']] ?? $l['account'];
             $l['amount']=Amounts::format($l['native_minor'],$prec[$l['currency']]);
             $l['report']=Amounts::format($l['base_minor'],$prec[$info['base']]);
+            // Screens show thousands separators like the totals; CSV and Excel keep the plain amounts above.
+            $l['shown']=Amounts::display($l['native_minor'],$prec[$l['currency']]);
+            $l['shown_report']=Amounts::display($l['base_minor'],$prec[$info['base']]);
         } unset($l);
         if ($section==='workbook') {
             $xml=static fn($s)=>htmlspecialchars((string)$s,ENT_XML1|ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
