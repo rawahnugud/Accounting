@@ -411,3 +411,62 @@ main nav.tabs a{padding:.6rem 1rem;border-radius:var(--radius-sm);color:var(--bo
 main nav.tabs a:hover{background:var(--rose);color:var(--wine)}
 main nav.tabs a[aria-current]{background:var(--wine);color:#fff;box-shadow:0 1px 2px rgba(133,20,75,.3)}
 @media(max-width:860px){main nav.tabs a{flex:1 1 auto;text-align:center;padding:.5rem .7rem}}
+/* SprintDesk layer. Values copied from github.com/RaghavRR/sprintdesk (tailwind.config.js, src/index.css,
+   src/components/ui/*, src/layouts/AppLayout.tsx, StatCard.tsx), converted from Tailwind classes to plain CSS.
+   SprintDesk's amber accent is replaced by the brand wine #85144b. Screen only, so print stays as it was. */
+@media screen{
+  /* tailwind.config.js: paper / ink scales, shadow-card; rounded-xl cards, rounded-lg controls */
+  :root{
+    --page:#FAFAF8;--thead:#F3F2ED;--ink:#12141B;--body:#2C303C;--muted:#454A59;
+    --line:rgba(18,20,27,.08);--line-2:rgba(18,20,27,.15);
+    --radius:12px;--radius-sm:8px;
+    --shadow:0 1px 2px 0 rgb(0 0 0 / .06),0 1px 3px 0 rgb(0 0 0 / .08);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  /* index.css: ::selection, .focus-ring, .scrollbar-thin */
+  ::selection{background:var(--rose-2);color:var(--ink)}
+  :focus-visible{outline:2px solid var(--wine);outline-offset:2px}
+  *::-webkit-scrollbar{width:6px;height:6px}
+  *::-webkit-scrollbar-thumb{background:rgba(44,48,60,.2);border-radius:9999px}
+  /* StatCard / DataTable / Modal: border ink-950/10 + shadow-card */
+  .card,details,.scroll,.branch-link,.task-links a,main>ul>li,.sale-summary,.statement-paper,main nav.tabs{border:1px solid rgba(18,20,27,.1);box-shadow:var(--shadow)}
+  details details,details .task-links a,.statement-paper .scroll,.doc-card .sale-summary{box-shadow:none}
+  /* AppLayout header: bg-white/90 backdrop-blur, border-b ink-950/8 */
+  .staff .topbar{background:rgba(255,255,255,.9);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:none;border-bottom:1px solid var(--line)}
+  .staff .page-heading::before{box-shadow:none;border-top:0;border-bottom:1px solid var(--line)}
+  /* Mono uppercase labels (StatCard label, DataTable thead, Badge, nav): font-mono text-xs uppercase tracking-wide */
+  html:not([dir=rtl]) :is(.metrics .card a,thead th,table:not(:has(thead)) tr:first-child>th,.context span,.role,.desktop-nav .primary::before,.doc-details dt,.dual-values thead th){font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em}
+  html:not([dir=rtl]) :is(.metrics .card a,.doc-details dt){font-size:.75rem;color:rgba(69,74,89,.7)}
+  html:not([dir=rtl]) :is(thead th,table:not(:has(thead)) tr:first-child>th){font-size:.75rem;font-weight:500;color:var(--muted)}
+  html:not([dir=rtl]) .report-values tr>th{font-family:inherit;text-transform:none;letter-spacing:0;font-size:.9rem;color:var(--ink)}
+  /* Badge: rounded px-1.5 py-0.5 text-[11px] */
+  .context span,.role{padding:.125rem .375rem;border-radius:4px;font-size:11px;font-weight:500}
+  /* StatCard value: text-3xl font-semibold */
+  .metrics .card strong{font-size:clamp(1.5rem,2.2vw,1.875rem);letter-spacing:-.01em}
+  /* DataTable: thead ink-950/[0.03], rows divide ink-950/8, hover ink-950/[0.02] */
+  thead th,table:not(:has(thead)) tr:first-child>th{background:#F8F8F7}
+  tbody tr:hover td,tr:hover>td{background:rgba(18,20,27,.02)}
+  /* AppLayout NavLink: rail (3px inline-start border), accent/10 when active, ink-950/5 on hover */
+  html:not([dir=rtl]) .primary a{font-family:var(--mono);font-size:13px;text-transform:uppercase;letter-spacing:.05em}
+  .primary a[aria-current]{background:rgba(244,182,210,.1)}
+  .primary a[aria-current]::after{top:0;bottom:0;border-radius:0}
+  html[data-theme=light] .primary a:hover{background:rgba(18,20,27,.05);color:var(--ink)}
+  html[data-theme=light] .primary a[aria-current]{background:rgba(133,20,75,.1);color:var(--ink)}
+  /* Button: rounded-lg font-medium; secondary = transparent with border ink-950/20, hover ink-950/5 */
+  button,a.button,input,select,textarea{border-radius:var(--radius-sm)}
+  .secondary,button.secondary{background:transparent;color:var(--ink);border-color:rgba(18,20,27,.2)}
+  .secondary:hover,button.secondary:hover{background:rgba(18,20,27,.05);color:var(--ink);border-color:rgba(18,20,27,.2)}
+  .theme-toggle,.logout button{border-radius:var(--radius-sm)}
+  /* Input: border ink-950/15, placeholder ink-600/40, focus ring accent */
+  input::placeholder,textarea::placeholder{color:rgba(69,74,89,.4)}
+  input:focus,select:focus,textarea:focus{border-color:var(--wine);box-shadow:0 0 0 2px rgba(133,20,75,.2)}
+  /* tailwind.config.js animation slide-up 150ms ease-out for toasts, alerts and dialogs */
+  @keyframes sd-slide-up{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
+  [role=alert],[role=status],dialog.confirm[open]{animation:sd-slide-up 150ms ease-out}
+  dialog.confirm::backdrop{background:rgba(18,20,27,.4)}
+  .guest main{border-radius:var(--radius)}
+}
+/* index.css: respect reduced motion */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+}
