@@ -28,6 +28,58 @@ final class StaffTreasuryController extends AbstractController
             'throttled' => $error instanceof TooManyLoginAttemptsAuthenticationException, 'email' => $auth->getLastUsername()]);
     }
 
+    /** Emails a one-hour reset link through the host's PHP mail(); the reply never reveals whether the email exists. */
+    public function forgotPassword(Request $request): Response
+    {
+        $sent = false;
+        if ($request->isMethod('POST')) {
+            if (!$this->isCsrfTokenValid('staff', $request->request->get('_token'))) {
+                $this->addFlash('error', 'This form expired. Check the details and submit again.');
+                return $this->redirectToRoute('forgot_password');
+            }
+            $email = trim((string)$request->request->get('email'));
+            $user = $this->db->prepare('SELECT email FROM users WHERE email = ?');
+            $user->execute([$email]);
+            $recent = $this->db->prepare("SELECT 1 FROM password_reset_tokens WHERE email = ? AND created_at > datetime('now','-2 minutes')");
+            $recent->execute([$email]);
+            if ($user->fetchColumn() && !$recent->fetchColumn()) {
+                $token = bin2hex(random_bytes(32));
+                $this->db->prepare("INSERT INTO password_reset_tokens(email, token, created_at) VALUES (?, ?, datetime('now'))
+                    ON CONFLICT(email) DO UPDATE SET token = excluded.token, created_at = excluded.created_at")->execute([$email, hash('sha256', $token)]);
+                $link = $this->generateUrl('reset_password', ['token' => $token], \Symfony\Component\Routing\Generator\UrlGeneratorInterface::ABSOLUTE_URL);
+                @mail($email, 'Reset your Midnight Travel accounting password',
+                    "Open this link within one hour to choose a new password:\n\n$link\n\nIf you did not ask for this, ignore this email.",
+                    'From: Midnight Travel Accounting <no-reply@'.$request->getHost().'>');
+            }
+            $sent = true;
+        }
+        return $this->render('forgot_password.html.twig', ['sent' => $sent]);
+    }
+
+    public function resetPassword(string $token, Request $request): Response
+    {
+        $find = $this->db->prepare("SELECT email FROM password_reset_tokens WHERE token = ? AND created_at > datetime('now','-60 minutes')");
+        $find->execute([hash('sha256', $token)]);
+        $email = $find->fetchColumn();
+        $error = $email ? null : 'This reset link is invalid or has expired. Ask for a new one.';
+        if ($email && $request->isMethod('POST')) {
+            $password = (string)$request->request->get('password');
+            if (!$this->isCsrfTokenValid('staff', $request->request->get('_token'))) {
+                $error = 'This form expired. Check the details and submit again.';
+            } elseif (strlen($password) < 12 || strlen($password) > 72) {
+                $error = 'Enter a 12 to 72 byte password.';
+            } elseif ($password !== (string)$request->request->get('confirm')) {
+                $error = 'The two passwords do not match.';
+            } else {
+                $this->db->prepare('UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?')->execute([password_hash($password, PASSWORD_BCRYPT), $email]);
+                $this->db->prepare('DELETE FROM password_reset_tokens WHERE email = ?')->execute([$email]);
+                $this->addFlash('message', 'Password changed. Sign in with the new password.');
+                return $this->redirectToRoute('login');
+            }
+        }
+        return $this->render('reset_password.html.twig', ['error' => $error, 'valid' => (bool)$email]);
+    }
+
     public function logout(): never
     {
         throw new \LogicException('The firewall handles sign-out.');

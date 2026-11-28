@@ -62,6 +62,9 @@ final class Language extends AbstractExtension implements EventSubscriberInterfa
         if (preg_match('/^No exchange rate for ([A-Z]{3}) yet\./', $text, $m)) {
             return 'لا يوجد سعر صرف لعملة '.$m[1].' بعد. يمكن للمسؤول إضافته من لوحة الإدارة عبر تحديد سعر الصرف.';
         }
+        if (preg_match('/^Re-rated (\d+) entries\.$/', $text, $m)) {
+            return 'تمت إعادة تسعير '.$m[1].' قيد.';
+        }
         if (preg_match('/^Transfer #(\d+) recorded\.$/', $text, $m)) {
             return 'تم تسجيل التحويل رقم '.$m[1].'.';
         }

@@ -18,7 +18,9 @@ final class Corrections
 
     private function original(int $id): array
     {
-        $row=$this->books->rows('SELECT d.* FROM documents d JOIN users u ON u.id=? AND u.is_admin=1
+        // Administrators and the branch's sales staff may correct entries.
+        $row=$this->books->rows('SELECT d.* FROM documents d JOIN users u ON u.id=? AND (u.is_admin=1
+            OR EXISTS(SELECT 1 FROM branch_staff s WHERE s.user_id=u.id AND s.branch_id=d.branch_id AND s.role=\'cashier\'))
             WHERE d.id=? AND d.branch_id=? AND d.reversal_of IS NULL AND d.kind NOT IN (\'allocation_fx\',\'reverse\',\'revaluation\')
             AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id)',[$this->actor,$id,$this->branch]);
         return $row[0] ?? throw new DomainException('This document is unavailable for correction.');
@@ -81,6 +83,34 @@ final class Corrections
             $this->db->exec('ROLLBACK');
             throw $e;
         }
+    }
+
+    /**
+     * Re-posts every eligible entry in a date range at a new rate, optionally for one account.
+     * Each document is its own transaction, so one blocked entry (for example an invoice with linked payments) does not stop the rest.
+     */
+    public function rerate(string $currency,string $from,string $to,string $rate,string $reason,string $account=''): array
+    {
+        Books::date($from); Books::date($to);
+        if ($from>$to) { throw new DomainException('Start date is after end date.'); }
+        $rate=Amounts::clean($rate);
+        if (!Amounts::parse($rate,6)) { throw new DomainException('Enter a positive exchange rate up to one million, for an operation that involves a foreign currency.'); }
+        if (trim($reason)==='') { throw new DomainException('Enter a correction reason (maximum 500 bytes).'); }
+        $ids=array_column($this->books->rows("SELECT DISTINCT d.id FROM documents d JOIN entries e ON e.document_id=d.id
+            WHERE d.branch_id=? AND d.day BETWEEN ? AND ? AND e.currency=? AND d.reversal_of IS NULL
+            AND d.kind NOT IN ('reverse','allocation_fx','revaluation','payroll','legacy_ticket_cost','legacy_ticket_refund','legacy_supplier_payment','legacy_journal')
+            AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id)
+            AND (?='' OR EXISTS(SELECT 1 FROM entries a WHERE a.document_id=d.id AND a.account=?))
+            ORDER BY d.id DESC LIMIT 200",[$this->branch,$from,$to,$currency,$account,$account]),'id');
+        $done=[]; $skipped=[];
+        foreach ($ids as $id) {
+            try {
+                $f=$this->form((int)$id);
+                if (($f['source_rate'] ?? '')===$rate || ($f['override'] ?? '')===$rate) { continue; }
+                $done[$id]=$this->save((int)$id,['override'=>$rate,'reason'=>$reason]+$f,false);
+            } catch (DomainException $e) { $skipped[$id]=$e->getMessage(); }
+        }
+        return ['done'=>$done,'skipped'=>$skipped];
     }
 
     private function replaceImport(array $doc,array $f): int

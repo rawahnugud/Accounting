@@ -155,3 +155,18 @@ denied(fn()=>$post('reverse',['related'=>$restated[0],'day'=>'2027-02-02']));
 denied(fn()=>(new Books($db,1,2))->revalue('2027-01-31'));
 same((int)$db->query('SELECT COUNT(*) FROM (SELECT document_id FROM entries GROUP BY document_id HAVING SUM(base_minor)<>0)')->fetchColumn(),0);
 echo "PASS month-end revaluation restates foreign balances, reverses next day, repeats as a no-op and cannot be reversed\n";
+$db->exec("INSERT INTO parties VALUES (20,1,'customer','Rerate client','SDG','')");
+$plain=$post('sale',['customer'=>20,'currency'=>'SDG','amount'=>'100000','day'=>'2027-02-05']);
+$paid=$post('sale',['customer'=>20,'currency'=>'SDG','amount'=>'50000','day'=>'2027-02-05']);
+$post('receipt',['customer'=>20,'cash'=>2,'amount'=>'10000','related'=>$paid,'day'=>'2027-02-06']);
+$rerate=(new App\Accounting\Corrections($db,1,1))->rerate('SDG','2027-02-05','2027-02-05','4000','Agreed rate','customer:20');
+same(array_keys($rerate['skipped']),[$paid]);
+same((int)$db->query("SELECT base_minor FROM entries WHERE document_id=".$rerate['done'][$plain]." AND account='customer:20'")->fetchColumn(),2500);
+same((new App\Accounting\Corrections($db,1,1))->rerate('SDG','2027-02-05','2027-02-05','4000','Again','customer:20')['done'],[]);
+// Sales staff (cashier role) may post administrator operations and void entries.
+$db->exec("INSERT INTO branch_staff VALUES (2,1,1,'cashier')");
+$sales=new Books($db,1,2);
+$deposit=$sales->transact(form('deposit',['cash'=>1,'amount'=>'5','day'=>'2027-02-07']))['id'];
+(new App\Accounting\Corrections($db,1,2))->save($deposit,['reason'=>'Sales void test'],true);
+same((int)$db->query("SELECT COUNT(*) FROM documents WHERE reversal_of=$deposit")->fetchColumn(),1);
+echo "PASS bulk re-rate by date range and account skips paid invoices, sales staff post and void\n";

@@ -113,9 +113,7 @@ final class Books
         if (!$admin && $access['role']!=='cashier') { throw new DomainException('Posting permission required.'); }
         $kind=$f['kind'] ?? '';
         if (!isset(self::TYPES[$kind])) { throw new DomainException('Choose an operation.'); }
-        if (!$admin && in_array($kind,self::ADMIN_TYPES,true)) {
-            throw new DomainException('Administrator access required.');
-        }
+        // Sales staff (the cashier branch role) record every operation; only the control panel stays with administrators.
         $day=self::date($f['day'] ?? '');
         $due=self::date(($f['due'] ?? '') ?: $day);
         $ref=trim($f['reference'] ?? '');
