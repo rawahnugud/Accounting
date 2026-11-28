@@ -116,7 +116,7 @@ with tempfile.TemporaryDirectory() as temp:
         assert "Recent sales" in dashboard and "Journal entries" not in dashboard
         menu = call("/new")
         daily = menu.split('<div class="task-links daily">',1)[1].split("</div>",1)[0]
-        assert daily.count("<a ") == 4 and 'href="/sale"' in daily and 'href="/transfer"' in daily
+        assert daily.count("<a ") == 5 and 'href="/sale"' in daily and 'href="/transfer"' in daily and 'href="/balance-transfer"' in daily
         assert 'href="/reverse"' in menu and 'href="/reverse"' not in daily
         assert "Journal entries" in call("/ledger")
         for section in ["dashboard","report","post","export","statements"]:
@@ -197,6 +197,7 @@ with tempfile.TemporaryDirectory() as temp:
         assert "Supplier One" not in customer_copy.split('<article class="statement-paper">',1)[1].split('</article>',1)[0]
         assert "Closing balance" in call(statement_url+"&download=csv")
         assert 'href="/receipt?customer=1&amp;back=' in customer_copy
+        assert "Ticket / PNR" in customer_copy and 'name="pnr"' in call("/sale")
         balances=call("/statement")
         assert "Customers who owe us" in balances and re.search(r'href="/statement\?account=customer(?:%3A|:)1[^"]*">Client A</a>',balances)
         receipt=call("/receipt?customer=1&back=/statement?account=customer:1")

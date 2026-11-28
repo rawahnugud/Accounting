@@ -20,10 +20,12 @@ final class AccountStatement
             SUM(CASE WHEN l.native_minor<0 THEN -l.native_minor ELSE 0 END) AS credit,
             MAX(CASE WHEN l.day>=:start THEN n.label END) AS label,
             MAX(CASE WHEN l.day>=:start THEN d.details END) AS details,
+            MAX(CASE WHEN l.day>=:start THEN o.details END) AS related_details,
             MAX(CASE WHEN l.day>=:start THEN d.id END) AS doc_id,
             MAX(CASE WHEN l.day>=:start AND EXISTS(SELECT 1 FROM documents r WHERE r.reversal_of=d.id) THEN 1 ELSE 0 END) AS reversed
             FROM ledger l LEFT JOIN documents d ON d.id=CASE WHEN substr(l.number,1,2)='D-' THEN CAST(substr(l.number,3) AS INTEGER) END AND d.branch_id=l.branch_id
             LEFT JOIN document_numbers n ON n.document_id=d.id
+            LEFT JOIN documents o ON o.id=d.related_id AND o.branch_id=d.branch_id
             WHERE l.branch_id=:branch AND l.account=:account AND l.currency=:currency AND l.day<=:end AND l.native_minor<>0
             AND NOT (l.day>=:start AND d.id IS NOT NULL AND (EXISTS(SELECT 1 FROM documents r WHERE r.reversal_of=d.id AND r.day<=:end)
                 OR EXISTS(SELECT 1 FROM documents o WHERE o.id=d.reversal_of AND o.day>=:start)))
@@ -39,10 +41,12 @@ final class AccountStatement
             if ($row['day']==='') { $opening=$balance; continue; }
             $debits+=$debit; $credits+=$credit;
             $details=json_decode($row['details'] ?? '{}',true) ?: [];
+            // A receipt or payment linked to a sale shows that sale's PNR and ticket when it has none of its own.
+            $related=json_decode($row['related_details'] ?? '{}',true) ?: [];
             $lines[]=['day'=>$row['day'],'number'=>$row['label'] ?: $row['document'],'reference'=>$row['reference'],
                 'doc'=>$row['doc_id'] && !$row['reversed'] && !in_array($row['kind'],['reverse','allocation_fx','revaluation'],true) ? (int)$row['doc_id'] : 0,
                 'operation'=>Books::TYPES[$row['kind']] ?? ucfirst(str_replace('_',' ',$row['kind'])),
-                'pnr'=>$details['pnr'] ?? '', 'ticket'=>$details['ticket'] ?? '',
+                'pnr'=>($details['pnr'] ?? '') ?: ($related['pnr'] ?? ''), 'ticket'=>($details['ticket'] ?? '') ?: ($related['ticket'] ?? ''),
                 'debit'=>$format($debit),'credit'=>$format($credit),'balance'=>$signed($balance)];
         }
         return ['lines'=>$lines,'opening'=>$signed($opening),'closing'=>$signed($balance),
