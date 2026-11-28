@@ -32,7 +32,8 @@ same($balance('customer:1'),60000); same($balance('cash:1'),40000);
 $post('supplier_payment',['cash'=>2,'supplier'=>2,'amount'=>'3000000','related'=>$id]);
 same($balance('supplier:2'),0); same($balance('cash:2'),-300000000);
 $post('transfer',['cash'=>1,'destination'=>2,'amount'=>'100']);
-same($balance('sales'),-100000);
+same($balance('sales'),-300000000);
+same((int)$db->query("SELECT SUM(base_minor) FROM ledger WHERE account='sales' AND currency='SDG'")->fetchColumn(),-100000);
 $fx=$post('receipt',['cash'=>2,'customer'=>1,'amount'=>'2400000','related'=>$id,'day'=>'2026-02-10']);
 same($balance('customer:1'),0);
 $post('reverse',['related'=>$fx,'day'=>'2026-02-11']);
@@ -116,7 +117,10 @@ $exchange=$post('transfer',['cash'=>1,'destination'=>2,'amount'=>'100','override
 same((int)$db->query("SELECT native_minor FROM entries WHERE document_id=$exchange AND account='cash:2'")->fetchColumn(),45500000);
 same((new App\Accounting\Corrections($db,1,1))->form($exchange)['override'],'4550');
 $db->exec("INSERT INTO branch_staff VALUES (2,1,1,'cashier')");
-denied(fn()=>(new Books($db,1,2))->transact(form('transfer',['cash'=>1,'destination'=>2,'amount'=>'1','override'=>'4550','day'=>'2027-01-04'])));
+// Staff set the agreed rate while recording; the document records who set it.
+$cashierRate=(new Books($db,1,2))->transact(form('transfer',['cash'=>1,'destination'=>2,'amount'=>'1','override'=>'4600','day'=>'2027-01-04']))['id'];
+same(json_decode($db->query("SELECT details FROM documents WHERE id=$cashierRate")->fetchColumn(),true)['override_by'],2);
+same((int)$db->query("SELECT native_minor FROM entries WHERE document_id=$cashierRate AND account='cash:2'")->fetchColumn(),460000);
 $db->exec('DELETE FROM branch_staff WHERE user_id=2');
 $invoice=$post('sale',['customer'=>8,'currency'=>'SDG','amount'=>'400000','day'=>'2027-01-05','pnr'=>'QA1','service'=>'Ticket']);
 $post('receipt',['cash'=>1,'customer'=>8,'amount'=>'100','related'=>$invoice,'override'=>'4000','day'=>'2027-01-12']);
@@ -129,7 +133,14 @@ $recovery=$post('recovery',['employee'=>9,'currency'=>'SDG','amount'=>'400000','
 same((int)$db->query("SELECT SUM(base_minor) FROM ledger WHERE account='advance:9'")->fetchColumn(),0);
 same((int)$db->query("SELECT base_minor FROM entries WHERE document_id=$recovery AND account='fx'")->fetchColumn(),2000);
 same((int)$db->query('SELECT COUNT(*) FROM (SELECT document_id FROM entries GROUP BY document_id HAVING SUM(base_minor)<>0)')->fetchColumn(),0);
-echo "PASS exchange-rate override on transfers and receipts, refunds keep ticket details, advances recovered at carrying value\n";
+$usdSale=$post('sale',['customer'=>8,'currency'=>'USD','amount'=>'10','override'=>'6000','day'=>'2027-01-12']);
+same((int)$db->query("SELECT native_minor FROM entries WHERE document_id=$usdSale AND account='customer:8'")->fetchColumn(),6000000);
+same($db->query("SELECT currency||':'||native_minor FROM entries WHERE document_id=$usdSale AND account='sales'")->fetchColumn(),'USD:-1000');
+$sdgFee=$post('fee',['cash'=>2,'amount'=>'5000','day'=>'2027-01-12']);
+same($db->query("SELECT currency||':'||native_minor FROM entries WHERE document_id=$sdgFee AND account='expense'")->fetchColumn(),'SDG:500000');
+$dual=(new App\Accounting\Reports($db))->statements(1,'2027-01-12','2027-01-12','service')['dual'];
+same([$dual['profit']['sales']['USD'],$dual['profit']['expense']['SDG']],[1000,-500000]);
+echo "PASS exchange-rate override on transfers and receipts, refunds keep ticket details, advances recovered at carrying value, dual-currency postings and report columns\n";
 $sdgCash=fn()=>$db->query("SELECT SUM(native_minor),SUM(base_minor) FROM ledger WHERE account='cash:2' AND day<='2027-01-31'")->fetch(PDO::FETCH_NUM);
 [$native]=$sdgCash();
 $restated=$book->revalue('2027-01-31');

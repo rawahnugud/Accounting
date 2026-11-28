@@ -35,6 +35,13 @@ final class Amounts
         return ($minor < 0 ? '-' : '').($precision ? substr($digits,0,-$precision).'.'.substr($digits,-$precision) : $digits);
     }
 
+    /** For screens and printouts only: thousands separators. Forms and exports keep format(). */
+    public static function display(int $minor, int $precision): string
+    {
+        [$whole,$fraction]=array_pad(explode('.',self::format(abs($minor),$precision)),2,null);
+        return ($minor < 0 ? '-' : '').strrev(implode(',',str_split(strrev($whole),3))).($fraction===null ? '' : '.'.$fraction);
+    }
+
     // Positive integer a*b/d, rounded half up. Reduce each doubled remainder before it can overflow.
     public static function ratio(int $a, int $b, int $d): int
     {

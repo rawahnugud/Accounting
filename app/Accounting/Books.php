@@ -197,19 +197,27 @@ final class Books
         // The override applies to the operation's foreign currency: the amount currency for sales, otherwise the account side that is not in the reporting currency.
         $applyOverride=function(string $currency) use ($override,$admin,$base):void {
             if ($override==='') { return; }
-            if (!$admin || $currency===$base || !Amounts::parse($override,6) || Amounts::parse($override,6)>1000000000000) {
-                throw new DomainException('An administrator may override a foreign currency rate within the supported range.');
+            // Staff set the agreed rate while recording a cross-currency operation; the document keeps who set it.
+            if ($currency===$base || !Amounts::parse($override,6) || Amounts::parse($override,6)>1000000000000) {
+                throw new DomainException('Enter a positive exchange rate up to one million, for an operation that involves a foreign currency.');
             }
             $this->overrides[$currency]=Amounts::clean($override);
         };
-        if (in_array($kind,['sale','reissue','refund'],true)) { $applyOverride($source); }
+        if (in_array($kind,['sale','reissue','refund'],true)) {
+            // The rate covers whichever side is foreign: the price, the client account or the supplier account.
+            $sides=[$source,$costSource];
+            foreach (['customer','supplier'] as $type) {
+                $sides[]=$this->rows('SELECT currency FROM parties WHERE branch_id=? AND kind=? AND id=?',[$this->branch,$type,$f[$type] ?? 0])[0]['currency'] ?? $base;
+            }
+            $applyOverride(current(array_filter($sides,fn($c)=>$c!==$base)) ?: $base);
+        }
         $converted=trim($f['converted'] ?? '');
         if ($converted!=='' && in_array($kind,['sale','reissue','refund'],true)) {
             $r=$this->rate($source,$day);
             $baseAmount=Amounts::parse($converted,$r['base_places']);
             if ($amount==='') {
                 $amount=Amounts::format($this->convert($baseAmount,$r,false),$r['places']);
-            } elseif ($source!==$base && $override==='' && $admin && $baseAmount>0) {
+            } elseif ($source!==$base && $override==='' && $baseAmount>0) {
                 $scaled=Amounts::ratio(Amounts::parse($amount,$r['places']),10**(6+$r['base_places']-$r['places']),$baseAmount);
                 $this->overrides[$source]=Amounts::format($scaled,6);
             }
@@ -255,7 +263,8 @@ final class Books
                 throw new DomainException('Choose the original sale for this customer.');
             }
             if ($kind==='sale' && $original) { throw new DomainException('Use reissue or refund to link an original ticket.'); }
-            $income=['sales',$base]; $expense=['service_cost',$base];
+            // Dual currency: revenue and cost keep the currency they were agreed in; base_minor still carries the USD value.
+            $income=['sales',$source]; $expense=['service_cost',$costSource];
             $credit=$kind==='refund';
             $pair($credit?$income:$client,$credit?$client:$income,$amount,$source);
             $meta['source_rate']=$this->rate($source,$day)['rate'];
@@ -299,6 +308,7 @@ final class Books
             if ($accounts[0]===$accounts[1]) { throw new DomainException('Choose two different accounts.'); }
             foreach ($accounts as [$code,$currency]) { if (str_starts_with($code,'cash:')) { $source=$currency; } }
             if ($kind==='transfer') { $source=$accounts[1][1]; }
+            foreach ($accounts as &$account) { if (in_array($account[0],['expense','equity'],true)) { $account[1]=$source; } } unset($account);
             $applyOverride($source!==$base ? $source : ($accounts[0][1]!==$base ? $accounts[0][1] : $accounts[1][1]));
             $pair($accounts[0],$accounts[1],$amount,$source);
             $meta['source']=$source;
