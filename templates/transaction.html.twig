@@ -2,7 +2,7 @@
 {% set everyday=['sale','receipt','supplier_payment','transfer'] %}
 <div class="task-links daily">{% for code in everyday %}<a href="{{ path('office',{branch:branch,section:'post',task:code}) }}">{{ tasks[code]|ui }}</a>{% endfor %}</div>
 {% for group,items in groups %}
-{% set extra=items|filter((label,code)=>code not in everyday and (info.role=='admin' or code not in adminTypes)) %}
+{% set extra=items|filter((label,code)=>code not in everyday and info.role!='viewer') %}
 {% if extra %}<details><summary>{{ group|ui }}</summary><div class="task-links">{% for code,label in extra %}<a href="{{ path('office',{branch:branch,section:'post',task:code}) }}">{{ label|ui }}</a>{% endfor %}</div></details>{% endif %}
 {% endfor %}
 {% elseif preview %}

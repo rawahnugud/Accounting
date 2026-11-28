@@ -7,4 +7,5 @@
 <p><label for="email">{{ 'Email'|ui }}</label><input id="email" name="email" type="email" autocomplete="username" value="{{ email }}" required></p>
 <p><label for="password">{{ 'Password'|ui }}</label><input id="password" name="password" type="password" autocomplete="current-password" required></p>
 <button>{{ 'Sign in'|ui }}</button></form>
+<p><a href="{{ path('forgot_password') }}">{{ 'Forgot password?'|ui }}</a></p>
 {% endblock %}

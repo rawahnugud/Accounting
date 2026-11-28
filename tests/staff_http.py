@@ -1,4 +1,5 @@
 """Local integration check. Run after composer install. Requires Python and PHP CLI."""
+import hashlib
 import json
 import uuid
 import http.cookiejar
@@ -205,6 +206,30 @@ with tempfile.TemporaryDirectory() as temp:
         assert "Outstanding" in call("/branches/1/office/post?task=receipt")
         assert "Sales this month" in call("/branches/1/office/dashboard")
         assert "Total in" in call("/branches/1/office/dashboard") and "Total in" in call("/branches/1/office/statements")
+        viewer_id=conn.execute("SELECT id FROM users WHERE email='viewer@example.test'").fetchone()[0]
+        admin_id=conn.execute("SELECT id FROM users WHERE is_admin=1 ORDER BY id LIMIT 1").fetchone()[0]
+        call("/control",dict(_token=token,action="access",user=viewer_id,branch=1,role="admin"))
+        assert conn.execute("SELECT is_admin FROM users WHERE id=?",(viewer_id,)).fetchone()==(1,)
+        call("/control",dict(_token=token,action="access",user=viewer_id,branch=1,role="viewer"))
+        assert conn.execute("SELECT is_admin FROM users WHERE id=?",(viewer_id,)).fetchone()==(0,)
+        assert "cannot remove your own" in call("/control",dict(_token=token,action="access",user=admin_id,branch=1,role="viewer"))
+        assert conn.execute("SELECT is_admin FROM users WHERE id=?",(admin_id,)).fetchone()==(1,)
+        assert "Re-rated 0 entries." in call("/control",dict(_token=token,action="rerate",branch=1,currency="SDG",**{"from":"2026-01-01"},to="2026-01-02",rate="3000",reason="None"))
+        signed_in=client
+        client=request.build_opener(request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        assert "Forgot password?" in call("/login")
+        forgot=call("/forgot-password")
+        assert "reset link is on its way" in call("/forgot-password",dict(_token=field(forgot,"_token"),email="viewer@example.test"))
+        raw="ab"*32
+        conn.execute("UPDATE password_reset_tokens SET token=? WHERE email='viewer@example.test'",(hashlib.sha256(raw.encode()).hexdigest(),))
+        conn.commit()
+        reset=call("/reset-password/"+raw)
+        assert "do not match" in call("/reset-password/"+raw,dict(_token=field(reset,"_token"),password="new-password-123",confirm="other-password-1"))
+        assert "Password changed" in call("/reset-password/"+raw,dict(_token=field(reset,"_token"),password="new-password-123",confirm="new-password-123"))
+        assert "invalid or has expired" in call("/reset-password/"+raw)
+        login=call("/login")
+        assert "Recent sales" in call("/login",{"email":"viewer@example.test","password":"new-password-123","_token":field(login,"_token")})
+        client=signed_in
         assert "Change this entry" in call("/branches/1/office/report?doc=1") and ">Edit</a>" in call("/branches/1/office/report")
         assert "Due date" not in call("/branches/1/office/post?task=transfer") and "Due date" in call("/branches/1/office/post?task=sale")
         print("PASS allocations, cancellations, management report, recovered sale, registrations, workbook and document numbering")
