@@ -632,9 +632,10 @@ final class OfficeController extends AbstractController
             array_push($args,$term,$branch,$term,substr(json_encode($term),1,-1),$term);
         }
         $condition=implode(' AND ',$where);
-        $totals=$this->rows("SELECT account,currency,SUM(native_minor) AS native,SUM(base_minor) AS base FROM ledger WHERE $condition GROUP BY account,currency ORDER BY account",$args);
-        $limit=match($section) {'dashboard'=>' LIMIT 12','report'=>' LIMIT 501',default=>''};
-        $lines=$this->rows("SELECT * FROM ledger WHERE $condition ORDER BY day DESC,number DESC,account$limit",$args);
+        // Forms need no totals, and only the ledger and its exports list lines.
+        $totals=$section==='post' ? [] : $this->rows("SELECT account,currency,SUM(native_minor) AS native,SUM(base_minor) AS base FROM ledger WHERE $condition GROUP BY account,currency ORDER BY account",$args);
+        $limit=$section==='report' ? ' LIMIT 501' : '';
+        $lines=in_array($section,['post','dashboard'],true) ? [] : $this->rows("SELECT * FROM ledger WHERE $condition ORDER BY day DESC,number DESC,account$limit",$args);
         $truncated=$section==='report' && count($lines)>500;
         if ($truncated) { array_pop($lines); }
         foreach ($lines as &$l) {
@@ -709,19 +710,21 @@ final class OfficeController extends AbstractController
         }
         foreach ($metrics as &$v) { $v=Amounts::display($v,$prec[$info['base']]); } unset($v);
         $doc=$query->getInt('doc') ? ($this->rows('SELECT d.*,EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) AS voided,u.name AS staff,n.label,cp.address,cp.contact,cp.registration FROM documents d JOIN users u ON u.id=d.user_id LEFT JOIN document_numbers n ON n.document_id=d.id JOIN branches b ON b.id=d.branch_id LEFT JOIN company_profiles cp ON cp.company_id=b.company_id WHERE d.branch_id=? AND d.id=?',[$branch,$query->getInt('doc')])[0] ?? null) : null;
-        $aging=$this->rows('SELECT * FROM open_items WHERE branch_id=? AND outstanding_minor<>0 ORDER BY due,id',[$branch]);
+        // Open items are costly to work out, so only the dashboard and operation forms read them.
+        $board=$section==='dashboard';
+        $aging=$board || $section==='post' ? $this->rows('SELECT * FROM open_items WHERE branch_id=? AND outstanding_minor<>0 ORDER BY due,id',[$branch]) : [];
         foreach ($aging as &$item) { $item['amount']=Amounts::display($item['outstanding_minor'],$prec[$item['currency']]); } unset($item);
-        $schedule=$this->rows("SELECT s.*,p.name,p.currency FROM schedules s JOIN documents d ON d.id=s.document_id JOIN entries e ON e.document_id=d.id
+        $schedule=!$board ? [] : $this->rows("SELECT s.*,p.name,p.currency FROM schedules s JOIN documents d ON d.id=s.document_id JOIN entries e ON e.document_id=d.id
             JOIN parties p ON e.account='creditor:'||p.id WHERE d.branch_id=? AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY s.due",[$branch]);
         // Repayments settle installments in due order; only installments not yet covered stay on the list.
-        $paid=array_column($this->rows("SELECT id,abs(original_minor)-abs(outstanding_minor) AS paid FROM open_items WHERE branch_id=? AND kind IN ('liability','loan')",[$branch]),'paid','id');
+        $paid=!$board ? [] : array_column($this->rows("SELECT id,abs(original_minor)-abs(outstanding_minor) AS paid FROM open_items WHERE branch_id=? AND kind IN ('liability','loan')",[$branch]),'paid','id');
         $planned=[];
         foreach ($schedule as $i=>&$item) {
             $planned[$item['document_id']]=($planned[$item['document_id']] ?? 0)+$item['amount_minor'];
             if ($planned[$item['document_id']]<=($paid[$item['document_id']] ?? 0)) { unset($schedule[$i]); continue; }
             $item['amount']=Amounts::display($item['amount_minor'],$prec[$item['currency']]);
         } unset($item);
-        $matches=$info['role']!=='viewer' ? $this->rows('SELECT id,debit_doc,credit_doc,account FROM matches WHERE branch_id=? ORDER BY id DESC',[$branch]) : [];
+        $matches=$board && $info['role']!=='viewer' ? $this->rows('SELECT id,debit_doc,credit_doc,account FROM matches WHERE branch_id=? ORDER BY id DESC',[$branch]) : [];
         $recentSales=$section==='dashboard' ? $this->rows("SELECT d.id,d.day,d.reference,
             MAX(p.name) AS customer,d.details,
             -SUM(CASE WHEN e.account='sales' THEN e.base_minor ELSE 0 END) AS revenue,
@@ -741,10 +744,10 @@ final class OfficeController extends AbstractController
         $pending=$section==='dashboard' && $info['role']!=='viewer' ? $this->rows("SELECT r.*,u.name FROM requests r JOIN users u ON u.id=r.requested_by
             WHERE r.branch_id=? AND r.state='pending' AND (r.requested_by=? OR CAST(? AS INTEGER)=1) ORDER BY r.id",[$branch,$u['id'],$u['is_admin']]) : [];
         foreach ($pending as &$req) { $req['values']=json_decode($req['payload'],true); } unset($req);
-        $checks=$this->rows("SELECT s.*,p.name,p.currency,c.decimals FROM supplier_checks s JOIN parties p ON p.id=s.party_id JOIN currencies c ON c.code=p.currency WHERE p.branch_id=? ORDER BY s.day DESC",[$branch]);
+        $checks=!$board ? [] : $this->rows("SELECT s.*,p.name,p.currency,c.decimals FROM supplier_checks s JOIN parties p ON p.id=s.party_id JOIN currencies c ON c.code=p.currency WHERE p.branch_id=? ORDER BY s.day DESC",[$branch]);
         foreach ($checks as &$item) { $item['variance']=Amounts::format($item['statement_minor']-$item['ledger_minor'],$item['decimals']); } unset($item);
         $services=$this->rows('SELECT name FROM service_categories ORDER BY name');
-        $recs=$this->rows('SELECT r.*,a.name,a.currency,c.decimals FROM reconciliations r JOIN cash_accounts a ON a.id=r.cash_id JOIN currencies c ON c.code=a.currency WHERE a.branch_id=? ORDER BY r.day DESC',[$branch]);
+        $recs=!$board ? [] : $this->rows('SELECT r.*,a.name,a.currency,c.decimals FROM reconciliations r JOIN cash_accounts a ON a.id=r.cash_id JOIN currencies c ON c.code=a.currency WHERE a.branch_id=? ORDER BY r.day DESC',[$branch]);
         foreach ($recs as &$rec) { $rec['variance']=Amounts::format($rec['statement_minor']-$rec['ledger_minor'],$rec['decimals']); } unset($rec);
         if ($doc && in_array($doc['kind'],Corrections::IMPORTS,true) ) {
             $entry=$this->rows('SELECT native_minor FROM entries WHERE document_id=? ORDER BY id LIMIT 1',[$doc['id']]);
@@ -759,7 +762,7 @@ final class OfficeController extends AbstractController
             'recentSales'=>$recentSales,'adminTypes'=>Books::ADMIN_TYPES,'truncated'=>$truncated,'expenseCategories'=>Books::EXPENSE_CATEGORIES,
             'recentDocs'=>$section==='post' ? $this->rows('SELECT id,reference,day FROM documents d WHERE branch_id=? AND reversal_of IS NULL AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY id DESC LIMIT 100',[$branch]) : [],
             'types'=>Books::TYPES,'key'=>(string)Uuid::v4(),'today'=>date('Y-m-d'),
-            'staff'=>$this->rows('SELECT DISTINCT u.id,u.name FROM users u JOIN ledger l ON l.user_id=u.id WHERE branch_id=?',[$branch]),
+            'staff'=>$section!=='report' ? [] : $this->rows('SELECT DISTINCT u.id,u.name FROM users u JOIN ledger l ON l.user_id=u.id WHERE branch_id=?',[$branch]),
 
         ]);
     }

@@ -26,7 +26,7 @@
 <form class="logout" action="{{ path('logout') }}" method="post">{{ include('csrf.html.twig') }}<button>{{ 'Sign out'|ui }}</button></form>
 {% endset %}
 <aside class="sidebar">
-<a class="brand" href="{{ path('home') }}"><img src="{{ app.request.basePath }}/assets/midnight-travel.png" width="1500" height="439" alt="Midnight Travel"><span>{{ 'Accounting'|ui }}</span></a>
+<a class="brand" href="{{ path('home') }}"><img src="{{ app.request.basePath }}/assets/midnight-travel.png" width="600" height="176" alt="Midnight Travel"><span>{{ 'Accounting'|ui }}</span></a>
 <div class="desktop-nav">{{ navigation }}</div>
 <details class="mobile-nav"><summary>{{ 'Main menu'|ui }}</summary>{{ navigation }}</details>
 </aside>{% endif %}
