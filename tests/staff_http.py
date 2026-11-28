@@ -225,6 +225,7 @@ with tempfile.TemporaryDirectory() as temp:
         # Choosing GBP as the total currency is remembered across screens; report columns, sections and presets filter the output.
         gbp=call("/reports?in=GBP&period=year&cols[]=&show[]=&show[]=profit&account=customer:1")
         assert "<th><bdi>USD</bdi></th>" not in gbp and "<bdi>GBP</bdi></th></tr></thead>" in gbp and "Balance sheet at" not in gbp
+        assert '<input type="hidden" name="show[]" value="profit">' in gbp
         assert '<option selected>GBP</option>' in call("/dashboard") and "<bdi>GBP</bdi>" in call("/ledger")
         call("/reports?in=USD")
         viewer_id=conn.execute("SELECT id FROM users WHERE email='viewer@example.test'").fetchone()[0]

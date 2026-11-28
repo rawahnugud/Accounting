@@ -407,7 +407,6 @@ final class OfficeController extends AbstractController
             if ($currency===$view) { return $native; }
             return $view===$info['base'] ? $base : $books->fromBase($base,$view,$asOf);
         };
-        $show=static fn(string $currency,int $native,int $base):string=>Amounts::display($inView($currency,$native,$base),$prec[$view]);
         $names=['sales'=>'Sales revenue','service_cost'=>'Supplier costs','salary_expense'=>'Payroll expense','expense'=>'Other expenses','equity'=>'Owner equity','fx'=>'Exchange differences'];
         $names=array_map([$this->language,'label'],$names);
         foreach ($cash as $a) { $names['cash:'.$a['id']]=$a['name']; }
@@ -567,7 +566,8 @@ final class OfficeController extends AbstractController
         foreach ($lines as &$l) {
             $l['name']=$names[$l['account']] ?? $l['account'];
             $l['amount']=Amounts::format($l['native_minor'],$prec[$l['currency']]);
-            $l['report']=Amounts::format($inView($l['currency'],(int)$l['native_minor'],(int)$l['base_minor']),$prec[$view]);
+            // CSV and Excel exports keep the booked reporting amounts; only the screen shows the chosen total currency.
+            $l['report']=Amounts::format($l['base_minor'],$prec[$info['base']]);
             // Screens show thousands separators like the totals; CSV and Excel keep the plain amounts above.
             $l['shown']=Amounts::display($l['native_minor'],$prec[$l['currency']]);
             $l['shown_report']=Amounts::display($inView($l['currency'],(int)$l['native_minor'],(int)$l['base_minor']),$prec[$view]);
@@ -669,9 +669,17 @@ final class OfficeController extends AbstractController
             LEFT JOIN parties p ON p.branch_id=d.branch_id AND e.account='customer:'||p.id
             WHERE d.branch_id=? AND d.kind IN ('sale','reissue','refund')
             GROUP BY d.id ORDER BY d.id DESC LIMIT 10",[$branch]) : [];
+        // Revenue and cost convert per booked currency, so a sale already in the total currency keeps its booked amount.
+        $saleIds=array_map('intval',array_column($recentSales,'id')) ?: [0];
+        $saleValue=[];
+        foreach ($this->rows("SELECT document_id,account,currency,SUM(native_minor) AS native,SUM(base_minor) AS base FROM entries
+            WHERE document_id IN (".implode(',',$saleIds).") AND account IN ('sales','service_cost') GROUP BY 1,2,3") as $e) {
+            $saleValue[$e['document_id']][$e['account']]=($saleValue[$e['document_id']][$e['account']] ?? 0)+$inView($e['currency'],(int)$e['native'],(int)$e['base']);
+        }
         foreach ($recentSales as &$sale) {
-            $sale['margin']=$show('',0,(int)$sale['revenue']-(int)$sale['cost']);
-            $sale['total']=$show('',0,(int)$sale['revenue']);
+            $revenue=-($saleValue[$sale['id']]['sales'] ?? 0); $cost=$saleValue[$sale['id']]['service_cost'] ?? 0;
+            $sale['margin']=Amounts::display($revenue-$cost,$prec[$view]);
+            $sale['total']=Amounts::display($revenue,$prec[$view]);
             $meta=json_decode($sale['details'],true) ?: [];
             try { $sale['price']=Amounts::display(Amounts::parse((string)($meta['amount'] ?? ''),$prec[$meta['source'] ?? $info['base']] ?? 2),$prec[$meta['source'] ?? $info['base']] ?? 2).' '.($meta['source'] ?? ''); }
             catch (DomainException) { $sale['price']=trim(($meta['amount'] ?? '').' '.($meta['source'] ?? '')); }
