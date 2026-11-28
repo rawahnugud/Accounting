@@ -25,10 +25,11 @@ final class Kernel extends BaseKernel
         yield new TwigBundle();
     }
 
+    // Rename the folder whenever routes or services change: production does not check the compiled container for staleness.
     public function getCacheDir(): string
     {
         return ($_SERVER['LARAVEL_STORAGE_PATH'] ?? $this->getProjectDir().'/storage')
-            .'/framework/cache/symfony/qa-v1/'.$this->environment;
+            .'/framework/cache/symfony/roles-v1/'.$this->environment;
     }
 
     protected function configureContainer(ContainerConfigurator $container): void
