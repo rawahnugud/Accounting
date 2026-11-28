@@ -634,5 +634,7 @@
   "Pay supplier": "دفع للمورد",
   "Find in this statement": "البحث في هذا الكشف",
   "PNR, ticket, reference or amount": "رقم الحجز أو التذكرة أو المرجع أو المبلغ",
-  "No lines match your search.": "لا توجد قيود مطابقة للبحث."
+  "No lines match your search.": "لا توجد قيود مطابقة للبحث.",
+  "Money in": "وارد",
+  "Money out": "صادر"
 }

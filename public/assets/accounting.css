@@ -224,6 +224,18 @@ main>ul>li{padding:1rem 1.25rem;background:var(--paper);border-radius:var(--radi
 .statement-paper .scroll{box-shadow:none;border:1px solid var(--line)}
 .statement-table td,.statement-table th{text-align:start}
 .statement-table .num{text-align:end;white-space:nowrap}
+/* On phones each statement line becomes a small card so amounts and balances stay on screen. */
+@media screen and (max-width:640px){
+  .statement-paper .scroll{overflow:visible;border:0}
+  .statement-table,.statement-table tbody,.statement-table tr,.statement-table td,.statement-table th{display:block;width:auto}
+  .statement-table thead{display:none}
+  .statement-table tr{border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:.6rem;padding:.4rem .2rem}
+  .statement-table tr[hidden]{display:none}
+  .statement-table td,.statement-table th{border:0;padding:.2rem .6rem}
+  .statement-table td[data-label]{text-align:end}
+  .statement-table td[data-label]::before{content:attr(data-label);float:inline-start;color:var(--muted);font-weight:400}
+  .statement-table td:empty{display:none}
+}
 .statement-find{margin-inline-start:auto;min-width:min(100%,18rem)}
 .statement-balances{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));align-items:start;margin-top:1rem}
 .statement-balances h2{font-size:1rem;margin:0 0 .75rem}
