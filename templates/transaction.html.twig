@@ -55,7 +55,7 @@
 <div class="grid"><label>{{ 'Exchange rate'|ui }} ({{ 'units per 1'|ui }} <bdi>{{ info.base }}</bdi>) {{ '(optional)'|ui }}<input name="override" inputmode="decimal" value="{{ f.override|default('') }}"><small>{{ 'Enter the agreed rate when the price, the client account or the supplier account use different currencies. Leave blank to use the saved rate.'|ui }}</small></label>
 <label>{{ 'Converted amount in'|ui }} <bdi>{{ info.base }}</bdi> {{ '(optional)'|ui }}<input name="converted" inputmode="decimal" value="{{ f.converted|default('') }}"></label></div>{% endif %}
 {% if kind=='payroll' %}<div class="grid">{% for k,label in {allowance:'Allowances',deduction:'Deductions'} %}<label>{{ (label)|ui }} {{ '(optional)'|ui }}<input name="{{ k }}" inputmode="decimal" value="{{ f[k]|default('') }}"></label>{% endfor %}</div>{% endif %}
-{% if kind=='reverse' %}<label>{{ 'Reason for voiding'|ui }}<input name="note" required value="{{ f.note|default('') }}"></label>
+{% if kind=='reverse' %}<label>{{ 'Reason for deleting'|ui }}<input name="note" required value="{{ f.note|default('') }}"></label>
 {% endif %}
 <button name="mode" value="save">{{ (kind=='sale'?'Save sale':'Save transaction')|ui }}</button> <button class="secondary" name="mode" value="preview">{{ 'Check amounts before saving'|ui }}</button>
 </form>

@@ -163,6 +163,10 @@ $rerate=(new App\Accounting\Corrections($db,1,1))->rerate('SDG','2027-02-05','20
 same(array_keys($rerate['skipped']),[$paid]);
 same((int)$db->query("SELECT base_minor FROM entries WHERE document_id=".$rerate['done'][$plain]." AND account='customer:20'")->fetchColumn(),2500);
 same((new App\Accounting\Corrections($db,1,1))->rerate('SDG','2027-02-05','2027-02-05','4000','Again','customer:20')['done'],[]);
+// Deleted entries and their reversals drop out of the statement; the reposted entry stays and keeps an Edit link.
+$lines=(new App\Accounting\AccountStatement($db))->read(1,'customer:20','SDG',2,'2027-02-01','2027-02-28')['lines'];
+same(count($lines),(int)$db->query("SELECT COUNT(DISTINCT d.id) FROM documents d JOIN entries e ON e.document_id=d.id WHERE e.account='customer:20' AND d.day BETWEEN '2027-02-01' AND '2027-02-28' AND d.reversal_of IS NULL AND NOT EXISTS(SELECT 1 FROM documents r WHERE r.reversal_of=d.id)")->fetchColumn());
+same(in_array($rerate['done'][$plain],array_column($lines,'doc'),true),true);
 // Sales staff (cashier role) may post administrator operations and void entries.
 $db->exec("INSERT INTO branch_staff VALUES (2,1,1,'cashier')");
 $sales=new Books($db,1,2);

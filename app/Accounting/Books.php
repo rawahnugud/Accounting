@@ -16,7 +16,7 @@ final class Books
         'supplier_refund'=>'Receive supplier refund', 'liability'=>'Record creditor obligation', 'loan'=>'Receive a creditor loan', 'repayment'=>'Repay creditor',
         'payroll'=>'Accrue salary', 'salary_payment'=>'Pay salary', 'advance'=>'Employee advance', 'recovery'=>'Recover advance from salary',
         'opening_party'=>'Opening customer or supplier balance', 'opening'=>'Opening cash balance', 'deposit'=>'Owner contribution', 'withdrawal'=>'Owner withdrawal',
-        'fee'=>'Bank fee or expense', 'transfer'=>'Bank or safe transfer', 'reverse'=>'Reverse or void document'
+        'fee'=>'Bank fee or expense', 'transfer'=>'Bank or safe transfer', 'reverse'=>'Reverse or delete document'
     ];
     public function __construct(private PDO $db, private int $branch, private int $actor) {}
     public function rows(string $sql, array $args=[]): array
