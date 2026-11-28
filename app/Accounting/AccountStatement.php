@@ -12,6 +12,7 @@ final class AccountStatement
     /** One SQLite read snapshot covers the opening, movements and closing balance. A deleted entry and its reversal are left out when both fall in the period, since together they net to zero. */
     public function read(int $branch,string $account,string $currency,int $precision,string $from,string $to): array
     {
+        // The document join takes the id out of the D-number so SQLite can look it up directly instead of scanning the branch.
         $query=$this->db->prepare("SELECT CASE WHEN l.day < :start THEN '' ELSE l.day END AS day,
             CASE WHEN l.day < :start THEN '' ELSE l.number END AS document,
             MAX(l.reference) AS reference,MAX(l.kind) AS kind,
@@ -21,7 +22,7 @@ final class AccountStatement
             MAX(CASE WHEN l.day>=:start THEN d.details END) AS details,
             MAX(CASE WHEN l.day>=:start THEN d.id END) AS doc_id,
             MAX(CASE WHEN l.day>=:start AND EXISTS(SELECT 1 FROM documents r WHERE r.reversal_of=d.id) THEN 1 ELSE 0 END) AS reversed
-            FROM ledger l LEFT JOIN documents d ON l.number='D-'||d.id AND d.branch_id=l.branch_id
+            FROM ledger l LEFT JOIN documents d ON d.id=CASE WHEN substr(l.number,1,2)='D-' THEN CAST(substr(l.number,3) AS INTEGER) END AND d.branch_id=l.branch_id
             LEFT JOIN document_numbers n ON n.document_id=d.id
             WHERE l.branch_id=:branch AND l.account=:account AND l.currency=:currency AND l.day<=:end AND l.native_minor<>0
             AND NOT (l.day>=:start AND d.id IS NOT NULL AND (EXISTS(SELECT 1 FROM documents r WHERE r.reversal_of=d.id AND r.day<=:end)
