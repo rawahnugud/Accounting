@@ -643,5 +643,9 @@
   "To amount": "المبلغ في حساب «إلى»",
   "Enter the agreed amount in the To account currency, or leave blank to convert at the rate.": "أدخل المبلغ المتفق عليه بعملة حساب «إلى»، أو اتركه فارغًا للتحويل بسعر الصرف.",
   "The To amount is only used between accounts in different currencies.": "يُستخدم مبلغ حساب «إلى» فقط بين حسابين بعملتين مختلفتين.",
-  "Choose the From and To accounts.": "اختر حسابي «من» و«إلى»."
+  "Choose the From and To accounts.": "اختر حسابي «من» و«إلى».",
+  "Export": "تصدير",
+  "Saved": "محفوظ",
+  "Profit": "الربح",
+  "Accounting details": "التفاصيل المحاسبية"
 }
