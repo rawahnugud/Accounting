@@ -628,11 +628,11 @@ final class OfficeController extends AbstractController
         $recentSales=$section==='dashboard' ? $this->rows("SELECT d.id,d.day,d.reference,
             MAX(p.name) AS customer,d.details,
             -SUM(CASE WHEN e.account='sales' THEN e.base_minor ELSE 0 END) AS revenue,
-            SUM(CASE WHEN e.account='service_cost' THEN e.base_minor ELSE 0 END) AS cost,
-            EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) AS reversed
+            SUM(CASE WHEN e.account='service_cost' THEN e.base_minor ELSE 0 END) AS cost
             FROM documents d JOIN entries e ON e.document_id=d.id
             LEFT JOIN parties p ON p.branch_id=d.branch_id AND e.account='customer:'||p.id
             WHERE d.branch_id=? AND d.kind IN ('sale','reissue','refund')
+            AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id)
             GROUP BY d.id ORDER BY d.id DESC LIMIT 10",[$branch]) : [];
         foreach ($recentSales as &$sale) {
             $sale['margin']=Amounts::display($sale['revenue']-$sale['cost'],$prec[$info['base']]);

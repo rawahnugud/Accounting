@@ -215,6 +215,10 @@ with tempfile.TemporaryDirectory() as temp:
         travel=conn.execute("SELECT MAX(id) FROM documents WHERE kind='sale'").fetchone()[0]
         for term in ["محمد","KRT/JED"]:
             assert f"D-{travel}" in call("/ledger?search="+parse.quote(term))
+        # A deleted sale and its hidden reversal drop out of recent sales; the ledger keeps both.
+        assert f'href="/d/{travel}"' in call("/dashboard")
+        call("/new",dict(_token=token,amend=travel,mode="void",reason="Entered twice"))
+        assert f'href="/d/{travel}"' not in call("/dashboard") and f"D-{travel}" in call("/ledger")
         call("/settings",dict(_token=token,action="rate",branch=1,currency="GBP",rate="٢٬٥٠٠",day="2026-02-01"))
         assert conn.execute("SELECT rate FROM rates WHERE currency='GBP' AND effective='2026-02-01'").fetchone()==("2500",)
         report=call("/reports?from=2026-01-01&to=2026-12-31")
