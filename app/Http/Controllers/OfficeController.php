@@ -376,11 +376,15 @@ final class OfficeController extends AbstractController
         if ($u['is_admin']) { $info['role']='admin'; }
         $books=new Books($this->db,$branch,(int)$u['id']);
         $f=[]; $preview=null;
+        // Where Edit, Delete and Cancel return to: a path inside this branch, such as the statement the person came from.
+        $back=(string)($r->request->get('back') ?? $r->query->get('back') ?? '');
+        if (!preg_match('#^/branches/'.$branch.'/[A-Za-z0-9/_-]*(\?[^\s<>"\'\\\\]*)?$#D',$back)) { $back=''; }
         if ($section==='post' && $info['role']==='viewer') { throw $this->createAccessDeniedException(); }
         if ($section==='post' && $r->isMethod('GET') && $r->query->getInt('amend')) {
             if ($info['role']==='viewer') { throw $this->createAccessDeniedException(); }
             try { $f=(new Corrections($this->db,$branch,(int)$u['id']))->form($r->query->getInt('amend')); }
             catch (DomainException $e) { throw $this->createNotFoundException(); }
+            $f['back']=$back;
         }
         if ($section==='post' && $r->isMethod('GET') && $r->query->getInt('draft')) {
             $draft=$this->rows("SELECT payload FROM requests WHERE branch_id=? AND id=? AND state='pending'
@@ -402,18 +406,20 @@ final class OfficeController extends AbstractController
                 }
                 return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'dashboard']);
             }
-            if (isset($f['amend'])) {
+            // Check amounts and Edit details on an amendment use the normal preview below; Confirm posting saves the amendment.
+            if (isset($f['amend']) && in_array($mode,['void','save','confirm'],true)) {
                 if ($info['role']==='viewer') { throw $this->createAccessDeniedException(); }
-                if (!in_array($mode,['void','save'],true)) { throw new HttpException(422,'Invalid action.'); }
                 try {
                     $newId=(new Corrections($this->db,$branch,(int)$u['id']))->save((int)$f['amend'],$f,$mode==='void');
-                    $this->addFlash('message','Correction recorded.');
+                    $this->addFlash('message',$mode==='void'?'Entry deleted.':'Correction recorded.');
+                    if ($back!=='') { return $this->redirect($r->getBasePath().$back); }
                     return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'report','doc'=>$newId]);
                 } catch (DomainException $e) {
                     $this->addFlash('error',$e->getMessage());
                     return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'report','doc'=>(int)$f['amend']]);
                 }
             }
+            if (isset($f['amend']) && $mode!=='preview' && $mode!=='edit') { throw new HttpException(422,'Invalid action.'); }
             if (!in_array($mode,['preview','confirm','edit','save'],true)) { throw new HttpException(422,'Choose a transaction action.'); }
             if ($mode!=='edit') {
                 $isPreview=($f['mode'] ?? '')==='preview';
@@ -711,7 +717,7 @@ final class OfficeController extends AbstractController
             $preview[$i]['native']=Amounts::display($e['native'],$prec[$e['currency']]);
             $preview[$i]['base']=Amounts::display($e['base'],$prec[$info['base']]);
         }
-        return $this->render('office.html.twig',compact('section','info','branch','metrics','dual','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','recs','pending','checks','matches')+[
+        return $this->render('office.html.twig',compact('section','info','branch','metrics','dual','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','recs','pending','checks','matches','back')+[
             'recentSales'=>$recentSales,'adminTypes'=>Books::ADMIN_TYPES,'truncated'=>$truncated,'expenseCategories'=>Books::EXPENSE_CATEGORIES,
             'recentDocs'=>$section==='post' ? $this->rows('SELECT id,reference,day FROM documents d WHERE branch_id=? AND reversal_of IS NULL AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY id DESC LIMIT 100',[$branch]) : [],
             'types'=>Books::TYPES,'key'=>(string)Uuid::v4(),'today'=>date('Y-m-d'),
