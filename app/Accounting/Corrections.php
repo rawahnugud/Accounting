@@ -30,7 +30,7 @@ final class Corrections
         $meta=json_decode($doc['details'],true,512,JSON_THROW_ON_ERROR);
         $f=['kind'=>$doc['kind'],'day'=>$doc['day'],'due'=>$doc['due'],'reference'=>$doc['reference'],
             'related'=>$doc['related_id'],'amend'=>$id,'currency'=>$meta['source'] ?? '']+$meta;
-        if (!empty($meta['override_by'])) { $f['override']=$meta['source_rate'] ?? ''; }
+        if (!empty($meta['override_by'])) { $f['override']=$meta['override'] ?? $meta['source_rate'] ?? ''; }
         if ($doc['kind']==='payroll') { $f['amount']=$meta['salary'] ?? ''; }
         foreach ($this->books->rows('SELECT account,native_minor FROM entries WHERE document_id=? ORDER BY id',[$id]) as $line) {
             $parts=explode(':',$line['account'],2);

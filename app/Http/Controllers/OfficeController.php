@@ -542,8 +542,10 @@ final class OfficeController extends AbstractController
         }
         if (($term=trim($query->get('search','')))!=='') {
             // Details are saved with json_encode defaults, so Arabic and "/" are escaped (\u0623, \/).
-            $where[]="(instr(lower(reference),lower(?))>0 OR number IN (SELECT 'D-'||id FROM documents WHERE branch_id=? AND (instr(lower(details),lower(?))>0 OR instr(lower(details),lower(?))>0)))";
-            array_push($args,$term,$branch,$term,substr(json_encode($term),1,-1));
+            // Printed numbers (for example MT-000123) live in document_numbers.
+            $where[]="(instr(lower(reference),lower(?))>0 OR number IN (SELECT 'D-'||id FROM documents WHERE branch_id=? AND (instr(lower(details),lower(?))>0 OR instr(lower(details),lower(?))>0))
+                OR number IN (SELECT 'D-'||n.document_id FROM document_numbers n WHERE instr(lower(n.label),lower(?))>0))";
+            array_push($args,$term,$branch,$term,substr(json_encode($term),1,-1),$term);
         }
         $condition=implode(' AND ',$where);
         $totals=$this->rows("SELECT account,currency,SUM(native_minor) AS native,SUM(base_minor) AS base FROM ledger WHERE $condition GROUP BY account,currency ORDER BY account",$args);

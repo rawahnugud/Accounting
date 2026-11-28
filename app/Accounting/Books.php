@@ -158,12 +158,15 @@ final class Books
         $cost=$f['cost'] ?? '';
         $this->overrides=[];
         $override=trim($f['override'] ?? '');
-        if ($override!=='') {
-            if (!$admin || $source===$base || !Amounts::parse($override,6) || Amounts::parse($override,6)>1000000000000) {
+        // The override applies to the operation's foreign currency: the amount currency for sales, otherwise the account side that is not in the reporting currency.
+        $applyOverride=function(string $currency) use ($override,$admin,$base):void {
+            if ($override==='') { return; }
+            if (!$admin || $currency===$base || !Amounts::parse($override,6) || Amounts::parse($override,6)>1000000000000) {
                 throw new DomainException('An administrator may override a foreign currency rate within the supported range.');
             }
-            $this->overrides[$source]=$override;
-        }
+            $this->overrides[$currency]=Amounts::clean($override);
+        };
+        if (in_array($kind,['sale','reissue','refund'],true)) { $applyOverride($source); }
         $converted=trim($f['converted'] ?? '');
         if ($converted!=='' && in_array($kind,['sale','reissue','refund'],true)) {
             $r=$this->rate($source,$day);
@@ -184,8 +187,11 @@ final class Books
         if ($category!=='' && (!in_array($kind,['fee','liability'],true) || !in_array($category,self::EXPENSE_CATEGORIES,true))) {
             throw new DomainException('Choose an expense category from the list.');
         }
+        $inherited=$original && in_array($kind,['reissue','refund'],true) ? json_decode($original['details'],true) : [];
         foreach (['service','passenger','pnr','ticket','airline','route','note','category'] as $field) {
             $meta[$field]=trim($f[$field] ?? '');
+            // Reissues and refunds keep the original ticket's details unless staff enter new ones.
+            if ($meta[$field]==='' && !in_array($field,['note','category'],true)) { $meta[$field]=(string)($inherited[$field] ?? ''); }
             if (strlen($meta[$field])>500) { throw new DomainException('Detail exceeds 500 characters.'); }
         }
         if ($kind==='payroll') {
@@ -257,6 +263,7 @@ final class Books
             if ($accounts[0]===$accounts[1]) { throw new DomainException('Choose two different accounts.'); }
             foreach ($accounts as [$code,$currency]) { if (str_starts_with($code,'cash:')) { $source=$currency; } }
             if ($kind==='transfer') { $source=$accounts[1][1]; }
+            $applyOverride($source!==$base ? $source : ($accounts[0][1]!==$base ? $accounts[0][1] : $accounts[1][1]));
             $pair($accounts[0],$accounts[1],$amount,$source);
             $meta['source']=$source;
             $meta['source_rate']=$this->rate($source,$day)['rate'];
@@ -309,6 +316,23 @@ final class Books
                 }
             }
         }
+        if ($kind==='recovery') {
+            // Relieve the advance at its carrying value so a fully recovered advance leaves no reporting-currency balance.
+            foreach ($lines as &$entry) {
+                if (!str_starts_with($entry['account'],'advance:')) { continue; }
+                $held=$this->one('SELECT COALESCE(SUM(native_minor),0) AS native,COALESCE(SUM(base_minor),0) AS base FROM ledger WHERE branch_id=? AND account=?',[$this->branch,$entry['account']]);
+                if ($held['native']>0 && $held['base']>0) {
+                    $carrying=-Amounts::ratio((int)$held['base'],-$entry['native'],(int)$held['native']);
+                    $difference=$entry['base']-$carrying;
+                    $entry['base']=$carrying;
+                    if ($difference) { $line(['fx',$base],$difference,$difference,'1'); }
+                }
+                break;
+            }
+            unset($entry);
+        }
+        $meta['override_by']=$this->overrides?$this->actor:null;
+        if ($this->overrides && $override!=='') { $meta['override']=Amounts::clean($override); }
         if (!$lines || array_sum(array_column($lines,'base'))!==0) { throw new DomainException('Unbalanced document.'); }
         if ($preview) { return ['id'=>null,'lines'=>$lines]; }
         $this->db->prepare('INSERT INTO documents(branch_id,user_id,kind,day,due,reference,details,related_id,reversal_of,request_key,fingerprint) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
