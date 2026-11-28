@@ -26,7 +26,7 @@ final class Kernel extends BaseKernel
         yield new TwigBundle();
     }
 
-    // Rename the folder whenever routes or services change: production does not check the compiled container for staleness.
+    // Production does not check the compiled container for staleness; scripts/upgrade-office.sh deletes this folder after each pull.
     public function getCacheDir(): string
     {
         return ($_SERVER['LARAVEL_STORAGE_PATH'] ?? $this->getProjectDir().'/storage')
@@ -73,6 +73,7 @@ final class Kernel extends BaseKernel
         $services->set(\PDO::class, \PDO::class)->factory([Database::class, 'open']);
         $services->set(Language::class);
         $services->set(FormExpired::class);
+        $services->set(SecurityHeaders::class);
         $services->set(StaffProvider::class);
         $services->set(OfficeController::class)->public();
         $services->set(Staff::class)->public();

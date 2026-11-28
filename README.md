@@ -33,10 +33,13 @@ In the active PHP 8.1 release run the following. The upgrade creates a consisten
 ```bash
 cd "$HOME/apps/accounting-php81" &&
 export PATH="/opt/alt/php81/usr/bin:$PATH" &&
-git pull --ff-only origin compat/php81 &&
-bash scripts/upgrade-office.sh &&
+bash scripts/update.sh &&
 bash scripts/promote-admin.sh rawah@midnighttravel.net
 ```
+
+`scripts/update.sh` pulls and runs `scripts/upgrade-office.sh`. It keeps the PHP handler block that cPanel adds to `public/.htaccess`, so the pull no longer conflicts on that file, and it stops if the file has any other local change. The upgrade clears the compiled Symfony cache. The promotion step is only needed once.
+
+For a daily verified snapshot, add a cPanel cron job such as `0 2 * * * export PATH="/opt/alt/php81/usr/bin:$PATH"; bash "$HOME/apps/accounting-php81/scripts/backup.sh"`, using the same PHP path as above. Snapshots go to `~/accounting-backups` (or ACCOUNTING_BACKUPS), daily ones older than 30 days (ACCOUNTING_BACKUP_DAYS) are removed, and a warning is printed if any document does not balance. Copy snapshots off the server from time to time.
 
 To promote an existing staff login with its current password, run `php artisan staff:promote EMAIL --keep-password` from the private hosting terminal.
 

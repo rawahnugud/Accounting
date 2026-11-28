@@ -733,7 +733,6 @@ final class OfficeController extends AbstractController
             if ($planned[$item['document_id']]<=($paid[$item['document_id']] ?? 0)) { unset($schedule[$i]); continue; }
             $item['amount']=Amounts::display($item['amount_minor'],$prec[$item['currency']]);
         } unset($item);
-        $matches=$board && $info['role']!=='viewer' ? $this->rows('SELECT id,debit_doc,credit_doc,account FROM matches WHERE branch_id=? ORDER BY id DESC',[$branch]) : [];
         $recentSales=$section==='dashboard' ? $this->rows("SELECT d.id,d.day,d.reference,
             MAX(p.name) AS customer,d.details,
             -SUM(CASE WHEN e.account='sales' THEN e.base_minor ELSE 0 END) AS revenue,
@@ -753,11 +752,7 @@ final class OfficeController extends AbstractController
         $pending=$section==='dashboard' && $info['role']!=='viewer' ? $this->rows("SELECT r.*,u.name FROM requests r JOIN users u ON u.id=r.requested_by
             WHERE r.branch_id=? AND r.state='pending' AND (r.requested_by=? OR CAST(? AS INTEGER)=1) ORDER BY r.id",[$branch,$u['id'],$u['is_admin']]) : [];
         foreach ($pending as &$req) { $req['values']=json_decode($req['payload'],true); } unset($req);
-        $checks=!$board ? [] : $this->rows("SELECT s.*,p.name,p.currency,c.decimals FROM supplier_checks s JOIN parties p ON p.id=s.party_id JOIN currencies c ON c.code=p.currency WHERE p.branch_id=? ORDER BY s.day DESC",[$branch]);
-        foreach ($checks as &$item) { $item['variance']=Amounts::format($item['statement_minor']-$item['ledger_minor'],$item['decimals']); } unset($item);
         $services=$this->rows('SELECT name FROM service_categories ORDER BY name');
-        $recs=!$board ? [] : $this->rows('SELECT r.*,a.name,a.currency,c.decimals FROM reconciliations r JOIN cash_accounts a ON a.id=r.cash_id JOIN currencies c ON c.code=a.currency WHERE a.branch_id=? ORDER BY r.day DESC',[$branch]);
-        foreach ($recs as &$rec) { $rec['variance']=Amounts::format($rec['statement_minor']-$rec['ledger_minor'],$rec['decimals']); } unset($rec);
         if ($doc && in_array($doc['kind'],Corrections::IMPORTS,true) ) {
             $entry=$this->rows('SELECT native_minor FROM entries WHERE document_id=? ORDER BY id LIMIT 1',[$doc['id']]);
             if ($entry) { $doc['import_amount']=Amounts::format(abs((int)$entry[0]['native_minor']),2); }
@@ -767,7 +762,7 @@ final class OfficeController extends AbstractController
             $preview[$i]['native']=Amounts::display($e['native'],$prec[$e['currency']]);
             $preview[$i]['base']=Amounts::display($e['base'],$prec[$info['base']]);
         }
-        return $this->render('office.html.twig',['branch'=>$link]+compact('section','info','metrics','dual','banks','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','recs','pending','checks','matches','back')+[
+        return $this->render('office.html.twig',['branch'=>$link]+compact('section','info','metrics','dual','banks','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','pending','back')+[
             'recentSales'=>$recentSales,'adminTypes'=>Books::ADMIN_TYPES,'truncated'=>$truncated,'expenseCategories'=>Books::EXPENSE_CATEGORIES,
             'recentDocs'=>$section==='post' ? $this->rows('SELECT id,reference,day FROM documents d WHERE branch_id=? AND reversal_of IS NULL AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY id DESC LIMIT 100',[$branch]) : [],
             'types'=>Books::TYPES,'key'=>(string)Uuid::v4(),'today'=>date('Y-m-d'),

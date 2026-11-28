@@ -1,21 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-umask 077
-backup_dir=${ACCOUNTING_BACKUPS:-"$HOME/accounting-backups"}
-mkdir -p "$backup_dir"
-backup=$(mktemp "$backup_dir/pre-office-$(date -u +%Y%m%d-%H%M%S)-XXXXXXXX.sqlite")
-php -r '
-require "bootstrap/runtime.php";
-$db = App\Database::open();
-$db->exec("VACUUM INTO ".$db->quote($argv[1]));
-$backup = new PDO("sqlite:".$argv[1]);
-if ($backup->query("PRAGMA integrity_check")->fetchColumn() !== "ok") {
-    throw new RuntimeException("Backup integrity check failed.");
-}
-echo "Verified database backup: ".$argv[1].PHP_EOL;
-' "$backup"
+bash scripts/backup.sh pre-office
 php artisan migrate --force
+# Production never checks the compiled container for staleness, so drop it and let the next request rebuild it with the new routes and services.
+rm -rf "$(php -r 'require "bootstrap/runtime.php"; echo (($_SERVER["LARAVEL_STORAGE_PATH"] ?? "") ?: "storage")."/framework/cache/symfony";')"
 php -r '
 require "bootstrap/runtime.php";
 $db=App\Database::open();
