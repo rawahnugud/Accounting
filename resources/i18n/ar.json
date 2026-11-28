@@ -636,5 +636,12 @@
   "PNR, ticket, reference or amount": "رقم الحجز أو التذكرة أو المرجع أو المبلغ",
   "No lines match your search.": "لا توجد قيود مطابقة للبحث.",
   "Money in": "وارد",
-  "Money out": "صادر"
+  "Money out": "صادر",
+  "Move a balance between accounts": "نقل رصيد بين الحسابات",
+  "The From account is credited and the To account is debited, for example when a client pays a supplier or creditor directly.": "يُقيَّد المبلغ دائنًا في حساب «من» ومدينًا في حساب «إلى»، مثلًا عندما يدفع العميل للمورد أو الدائن مباشرة.",
+  "To": "إلى",
+  "To amount": "المبلغ في حساب «إلى»",
+  "Enter the agreed amount in the To account currency, or leave blank to convert at the rate.": "أدخل المبلغ المتفق عليه بعملة حساب «إلى»، أو اتركه فارغًا للتحويل بسعر الصرف.",
+  "The To amount is only used between accounts in different currencies.": "يُستخدم مبلغ حساب «إلى» فقط بين حسابين بعملتين مختلفتين.",
+  "Choose the From and To accounts.": "اختر حسابي «من» و«إلى»."
 }

@@ -16,7 +16,8 @@ final class Books
         'supplier_refund'=>'Receive supplier refund', 'liability'=>'Record creditor obligation', 'loan'=>'Receive a creditor loan', 'repayment'=>'Repay creditor',
         'payroll'=>'Accrue salary', 'salary_payment'=>'Pay salary', 'advance'=>'Employee advance', 'recovery'=>'Recover advance from salary',
         'opening_party'=>'Opening customer or supplier balance', 'opening'=>'Opening cash balance', 'deposit'=>'Owner contribution', 'withdrawal'=>'Owner withdrawal',
-        'fee'=>'Bank fee or expense', 'transfer'=>'Bank or safe transfer', 'reverse'=>'Reverse or delete document'
+        'fee'=>'Bank fee or expense', 'transfer'=>'Bank or safe transfer',
+        'balance_transfer'=>'Move a balance between accounts', 'reverse'=>'Reverse or delete document'
     ];
     public function __construct(private PDO $db, private int $branch, private int $actor) {}
     public function rows(string $sql, array $args=[]): array
@@ -156,6 +157,13 @@ final class Books
         }
         $party=function(string $type) use ($f):array {
             $a=$this->one('SELECT id,currency FROM parties WHERE branch_id=? AND kind=? AND id=?',[$this->branch,$type,$f[$type] ?? 0]);
+            return [$type.':'.$a['id'],$a['currency']];
+        };
+        // A balance transfer names each account as "kind:id", so a creditor can pass a balance to another creditor.
+        $any=function(string $field) use ($f):array {
+            [$type,$id]=array_pad(explode(':',(string)($f[$field] ?? ''),2),2,'');
+            if (!in_array($type,['customer','supplier','creditor','employee'],true)) { throw new DomainException('Choose the From and To accounts.'); }
+            $a=$this->one('SELECT id,currency FROM parties WHERE branch_id=? AND kind=? AND id=?',[$this->branch,$type,$id]);
             return [$type.':'.$a['id'],$a['currency']];
         };
         $lines=[];
@@ -309,16 +317,31 @@ final class Books
                 'recovery'=>[$party('employee'),['advance:'.explode(':',$party('employee')[0])[1],$party('employee')[1]]],
                 'opening_party'=>($f['customer'] ?? '')!=='' ? [$party('customer'),['equity',$base]] : [['equity',$base],$party('supplier')],
                 'opening','deposit'=>[$cash('cash'),['equity',$base]], 'withdrawal'=>[['equity',$base],$cash('cash')],
-                'fee'=>[['expense',$base],$cash('cash')], 'transfer'=>[$cash('destination'),$cash('cash')]
+                'fee'=>[['expense',$base],$cash('cash')], 'transfer'=>[$cash('destination'),$cash('cash')],
+                // Money moves from the From account (credited) to the To account (debited).
+                'balance_transfer'=>[$any('to'),$any('from')]
             };
             if ($accounts[0]===$accounts[1]) { throw new DomainException('Choose two different accounts.'); }
             foreach ($accounts as [$code,$currency]) { if (str_starts_with($code,'cash:')) { $source=$currency; } }
-            if ($kind==='transfer') { $source=$accounts[1][1]; }
+            if ($kind==='transfer' || $kind==='balance_transfer') { $source=$accounts[1][1]; }
             foreach ($accounts as &$account) { if (in_array($account[0],['expense','equity'],true)) { $account[1]=$source; } } unset($account);
             $applyOverride($source!==$base ? $source : ($accounts[0][1]!==$base ? $accounts[0][1] : $accounts[1][1]));
             $pair($accounts[0],$accounts[1],$amount,$source);
             $meta['source']=$source;
             $meta['source_rate']=$this->rate($source,$day)['rate'];
+            if ($kind==='balance_transfer') {
+                $meta+=['from'=>$f['from'],'to'=>$f['to'],'to_amount'=>trim($f['to_amount'] ?? '')];
+                if ($meta['to_amount']!=='') {
+                    // The agreed To amount replaces the converted one at the same reporting value, so the books stay balanced.
+                    if ($accounts[0][1]===$source) { throw new DomainException('The To amount is only used between accounts in different currencies.'); }
+                    $to=$this->rate($accounts[0][1],$day);
+                    $native=Amounts::parse($meta['to_amount'],$to['places']);
+                    if (!$native) { throw new DomainException('Amount must round to a positive reporting amount.'); }
+                    $scaled=Amounts::ratio($native,10**(6+$to['base_places']-$to['places']),$lines[0]['base']);
+                    $lines[0]['native']=$native;
+                    $lines[0]['rate']=rtrim(rtrim(Amounts::format($scaled,6),'0'),'.');
+                }
+            }
             if ($original) {
                 $map=['receipt'=>'customer','supplier_payment'=>'supplier','salary_payment'=>'employee','repayment'=>'creditor',
                     'customer_refund'=>'customer','supplier_refund'=>'supplier'];
