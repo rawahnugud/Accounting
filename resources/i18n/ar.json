@@ -621,5 +621,8 @@
   "Re-posts each entry in the range at the new rate: the original is reversed and a corrected copy is saved. Invoices with linked payments are skipped and listed.": "يعيد ترحيل كل قيد في الفترة بالسعر الجديد: يُعكس القيد الأصلي ويُحفظ قيد مصحح. الفواتير المرتبطة بدفعات تُتخطى وتُعرض.",
   "Cancel": "إلغاء الأمر",
   "Delete this entry?": "حذف هذا القيد؟",
-  "Recorded by": "سجّله"
+  "Recorded by": "سجّله",
+  "← Back": "→ رجوع",
+  "Save changes": "حفظ التعديلات",
+  "Entry deleted.": "تم حذف القيد."
 }
