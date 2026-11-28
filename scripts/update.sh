@@ -8,7 +8,8 @@ file=public/.htaccess
 start='^# php -- BEGIN cPanel-generated handler'
 end='^# php -- END cPanel-generated handler'
 block=$(sed -n "/$start/,/$end/p" "$file")
-if ! sed "/$start/,/$end/d" "$file" | diff -B -q - <(git show HEAD:"$file") >/dev/null; then
+# Compare without blank lines, and without process substitution, which some cPanel hosts lack (/dev/fd).
+if [ "$(sed "/$start/,/$end/d;/^[[:space:]]*$/d" "$file")" != "$(git show HEAD:"$file" | sed '/^[[:space:]]*$/d')" ]; then
     echo "$file has changes besides the cPanel PHP handler block. Review them with git diff first."; exit 1
 fi
 # Put the handler back even if the pull fails, so the site keeps its PHP version.
