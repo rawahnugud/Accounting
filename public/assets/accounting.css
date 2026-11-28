@@ -30,12 +30,15 @@ small{color:var(--muted)}
 .shell{min-width:0}
 .staff .shell{margin-inline-start:var(--rail)}
 .sidebar{position:fixed;inset-block:0;inset-inline-start:0;width:var(--rail);display:flex;flex-direction:column;background:linear-gradient(180deg,var(--deep) 0%,var(--night) 100%);overflow:auto;z-index:4;box-shadow:0 2px 4px rgba(15,34,58,.12)}
-.brand{display:flex;flex-direction:column;align-items:center;gap:.45rem;height:auto;padding:1.1rem 1.25rem 1rem;text-decoration:none}
-.brand img{display:block;width:100%;max-width:178px;height:auto;padding:.5rem .8rem;background:#fff;border-radius:var(--radius)}
-.brand span{font-size:.66rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+.brand{display:flex;flex-direction:column;align-items:center;gap:.55rem;height:auto;padding:1.5rem 1.5rem 1.2rem;margin:0 1.1rem;border-bottom:1px solid rgba(255,255,255,.1);text-decoration:none}
+.brand img{display:block;box-sizing:border-box;width:186px;height:54px;padding-inline-start:186px;background:url(midnight-travel-light.png) center/contain no-repeat;filter:drop-shadow(0 1px 2px rgba(0,0,0,.25));transition:opacity .15s}
+.brand:hover img{opacity:.88}
+.brand span{display:flex;align-items:center;gap:.6rem;font-size:.64rem;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:rgba(255,255,255,.5)}
+.brand span::before,.brand span::after{content:"";width:1.1rem;height:1px;background:rgba(244,182,210,.45)}
+html[dir=rtl] .brand span{letter-spacing:0;font-size:.78rem}
 .desktop-nav{display:flex;flex-direction:column;flex:1;padding:.4rem 0 1rem}
 .primary{display:grid;gap:1px}
-.desktop-nav .primary::before{content:"Menu";padding:.9rem 1.5rem .45rem;font-size:.68rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.4)}
+.desktop-nav .primary::before{content:"Menu";padding:.9rem 1.5rem .45rem;font-size:.68rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:rgba(244,182,210,.6)}
 .desktop-nav .branch-nav::before{content:"Branch"}
 html[dir=rtl] .desktop-nav .primary::before{content:"القائمة";letter-spacing:0;font-size:.75rem}
 html[dir=rtl] .desktop-nav .branch-nav::before{content:"الفرع"}
@@ -47,8 +50,10 @@ html[dir=rtl] .desktop-nav .branch-nav::before{content:"الفرع"}
 .branch-nav a[href$="/report"]::before{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z'/%3E%3Cpath d='M4 21V5M8 7h7M8 11h7'/%3E%3C/svg%3E")}
 .branch-nav a[href$="/statements"]::before{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20V10M10 20V4M16 20v-7M22 20H2'/%3E%3C/svg%3E")}
 .primary a:hover{color:#fff}
-.primary a[aria-current]{color:#fff;background:rgba(255,255,255,.08)}
-.primary a[aria-current]::after{content:"";position:absolute;inset-inline-start:0;top:.35rem;bottom:.35rem;width:3px;border-radius:0 3px 3px 0;background:#fff}
+.primary a[aria-current]{color:#fff;background:linear-gradient(90deg,rgba(244,182,210,.16),rgba(244,182,210,.04))}
+html[dir=rtl] .primary a[aria-current]{background:linear-gradient(270deg,rgba(244,182,210,.16),rgba(244,182,210,.04))}
+.primary a[aria-current]::before{background:#f4b6d2}
+.primary a[aria-current]::after{content:"";position:absolute;inset-inline-start:0;top:.35rem;bottom:.35rem;width:3px;border-radius:0 3px 3px 0;background:#f4b6d2}
 html[dir=rtl] .primary a[aria-current]::after{border-radius:3px 0 0 3px}
 .branch-nav{margin-top:.4rem}
 .logout{margin-top:auto;padding:1rem 1.25rem .25rem;border-top:1px solid rgba(255,255,255,.08)}
@@ -245,8 +250,8 @@ main>ul>li{padding:1rem 1.25rem;background:var(--paper);border-radius:var(--radi
 @media(max-width:860px){
   .staff .shell{margin-inline-start:0}
   .sidebar{position:sticky;top:0;width:100%;flex-direction:row;align-items:center;justify-content:space-between;padding:.55rem 1rem;overflow:visible;z-index:5}
-  .brand{flex-direction:row;padding:0;gap:.6rem}
-  .brand img{width:118px;padding:.3rem .5rem}
+  .brand{flex-direction:row;padding:0;margin:0;border:0;gap:.6rem}
+  .brand img{width:132px;height:39px;padding-inline-start:132px}
   .brand span{display:none}
   .desktop-nav{display:none}
   .mobile-nav{display:block;margin:0;border-radius:var(--radius);box-shadow:none;background:rgba(255,255,255,.1)}
