@@ -25,10 +25,11 @@ final class Kernel extends BaseKernel
         yield new TwigBundle();
     }
 
+    // Rename the folder whenever routes or services change: production does not check the compiled container for staleness.
     public function getCacheDir(): string
     {
         return ($_SERVER['LARAVEL_STORAGE_PATH'] ?? $this->getProjectDir().'/storage')
-            .'/framework/cache/symfony/qa-v1/'.$this->environment;
+            .'/framework/cache/symfony/roles-v1/'.$this->environment;
     }
 
     protected function configureContainer(ContainerConfigurator $container): void
@@ -63,7 +64,7 @@ final class Kernel extends BaseKernel
                     'enable_csrf' => true, 'csrf_parameter' => '_token', 'csrf_token_id' => 'staff'],
             ]],
             'access_control' => [
-                ['path' => '^/(login|up)$', 'roles' => 'PUBLIC_ACCESS'],
+                ['path' => '^/(login|up|forgot-password|reset-password/[0-9a-f]{64})$', 'roles' => 'PUBLIC_ACCESS'],
                 ['path' => '^/', 'roles' => 'ROLE_STAFF'],
             ],
         ]);
@@ -85,6 +86,9 @@ final class Kernel extends BaseKernel
         $routes->add('office','/branches/{branch}/office/{section}')->controller([OfficeController::class,'office'])
             ->requirements(['branch'=>'\d+','section'=>'dashboard|post|report|export|workbook|statements'])->methods(['GET','POST']);
         $routes->add('login', '/login')->controller([Staff::class, 'login'])->methods(['GET', 'POST']);
+        $routes->add('forgot_password', '/forgot-password')->controller([Staff::class, 'forgotPassword'])->methods(['GET', 'POST']);
+        $routes->add('reset_password', '/reset-password/{token}')->controller([Staff::class, 'resetPassword'])
+            ->requirements(['token' => '[0-9a-f]{64}'])->methods(['GET', 'POST']);
         $routes->add('logout', '/logout')->controller([Staff::class, 'logout'])->methods(['POST']);
         $routes->add('ping', '/ping')->controller([Staff::class, 'ping'])->methods(['GET']);
         $routes->add('health', '/up')->controller([Staff::class, 'health'])->methods(['GET']);

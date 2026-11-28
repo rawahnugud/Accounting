@@ -72,6 +72,16 @@ final class OfficeController extends AbstractController
             $this->csrf($r);
             $f=$r->request->all();
             if (array_filter($f,'is_array')) { throw new HttpException(422,'Invalid form fields.'); }
+            if (($f['action'] ?? '')==='rerate') {
+                // Each re-posted document runs in its own transaction inside Corrections.
+                try {
+                    $result=(new Corrections($this->db,(int)($f['branch'] ?? 0),(int)$u['id']))->rerate((string)($f['currency'] ?? ''),(string)($f['from'] ?? ''),
+                        (string)($f['to'] ?? ''),(string)($f['rate'] ?? ''),trim((string)($f['reason'] ?? '')),(string)($f['account'] ?? ''));
+                    $this->addFlash('message',sprintf('Re-rated %d entries.',count($result['done'])));
+                    foreach ($result['skipped'] as $id=>$why) { $this->addFlash('error',"D-$id: ".$this->language->label($why)); }
+                } catch (DomainException $e) { $this->addFlash('error',$e->getMessage()); }
+                return $this->redirectToRoute('control',['setup'=>'rerate']);
+            }
             $this->db->exec('BEGIN IMMEDIATE');
             try {
                 $detail=$this->setup($f,(int)$u['id']);
@@ -233,12 +243,24 @@ final class OfficeController extends AbstractController
             $run('INSERT INTO employee_logins(user_id,employee_id) VALUES (?,?)',[$f['user'],$employeeId]);
             // Grant the initial branch assignment in the same transaction.
         case 'access':
-            if (($f['role'] ?? '')==='revoke') {
+            $role=$f['role'] ?? '';
+            if (!in_array($role,['admin','cashier','viewer','revoke'],true)) { throw new DomainException('Choose a role.'); }
+            $target=(int)($f['user'] ?? 0);
+            if ($role!=='admin' && $target===$actor) { throw new DomainException('You cannot remove your own administrator access.'); }
+            // Administrator is a company-wide flag; Sales and Viewer are branch roles.
+            $this->db->prepare('UPDATE users SET is_admin=? WHERE id=?')->execute([$role==='admin'?1:0,$target]);
+            if ($role==='admin') { break; }
+            if ($role==='revoke') {
                 $run('DELETE FROM branch_staff WHERE user_id=? AND branch_id=?',[$f['user'],$branch]);
             } else {
                 $run('INSERT INTO branch_staff(user_id,company_id,branch_id,role) SELECT ?,company_id,id,? FROM branches WHERE id=?
                     ON CONFLICT(user_id,branch_id) DO UPDATE SET role=excluded.role',[$f['user'],$f['role'],$branch]);
             }
+            break;
+        case 'staff password':
+            $password=$f['password'] ?? '';
+            if (strlen($password)<12 || strlen($password)>72) { throw new DomainException('Enter a 12 to 72 byte password.'); }
+            $run('UPDATE users SET password=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',[password_hash($password,PASSWORD_BCRYPT),(int)($f['user'] ?? 0)]);
             break;
         case 'leave':
             $start=Books::date($this->field($f,'start')); $end=Books::date($this->field($f,'end'));
@@ -272,7 +294,7 @@ final class OfficeController extends AbstractController
     {
         $this->csrf($r);
         $u=$this->identity();
-        if (!$u['is_admin']) { throw $this->createAccessDeniedException(); }
+        if (!$u['is_admin'] && !$this->rows("SELECT 1 FROM branch_staff WHERE user_id=? AND branch_id=? AND role='cashier'",[$u['id'],$branch])) { throw $this->createAccessDeniedException(); }
         $f=$r->request;
         $this->db->exec('BEGIN IMMEDIATE');
         try {
@@ -356,7 +378,7 @@ final class OfficeController extends AbstractController
         $f=[]; $preview=null;
         if ($section==='post' && $info['role']==='viewer') { throw $this->createAccessDeniedException(); }
         if ($section==='post' && $r->isMethod('GET') && $r->query->getInt('amend')) {
-            if (!$u['is_admin']) { throw $this->createAccessDeniedException(); }
+            if ($info['role']==='viewer') { throw $this->createAccessDeniedException(); }
             try { $f=(new Corrections($this->db,$branch,(int)$u['id']))->form($r->query->getInt('amend')); }
             catch (DomainException $e) { throw $this->createNotFoundException(); }
         }
@@ -381,7 +403,7 @@ final class OfficeController extends AbstractController
                 return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'dashboard']);
             }
             if (isset($f['amend'])) {
-                if (!$u['is_admin']) { throw $this->createAccessDeniedException(); }
+                if ($info['role']==='viewer') { throw $this->createAccessDeniedException(); }
                 if (!in_array($mode,['void','save'],true)) { throw new HttpException(422,'Invalid action.'); }
                 try {
                     $newId=(new Corrections($this->db,$branch,(int)$u['id']))->save((int)$f['amend'],$f,$mode==='void');
@@ -457,7 +479,7 @@ final class OfficeController extends AbstractController
             }
             $checking=$r->isMethod('POST');
             if ($checking) {
-                if (!$u['is_admin']) { throw $this->createAccessDeniedException(); }
+                if ($info['role']==='viewer') { throw $this->createAccessDeniedException(); }
                 $this->csrf($r);
                 $this->db->exec('BEGIN IMMEDIATE');
             }
@@ -489,7 +511,7 @@ final class OfficeController extends AbstractController
                 $error=$e->getMessage();
             }
             $checks=[];
-            if ($statement && $u['is_admin']) {
+            if ($statement && $info['role']!=='viewer') {
                 $checks=$this->rows('SELECT s.*,u.name AS staff FROM statement_checks s JOIN users u ON u.id=s.user_id
                     WHERE s.branch_id=? AND s.account=? AND s.as_of=? ORDER BY s.id DESC LIMIT 5',[$branch,$selected,$to]);
                 foreach ($checks as &$check) {
@@ -655,7 +677,7 @@ final class OfficeController extends AbstractController
             if ($planned[$item['document_id']]<=($paid[$item['document_id']] ?? 0)) { unset($schedule[$i]); continue; }
             $item['amount']=Amounts::display($item['amount_minor'],$prec[$item['currency']]);
         } unset($item);
-        $matches=$info['role']==='admin' ? $this->rows('SELECT id,debit_doc,credit_doc,account FROM matches WHERE branch_id=? ORDER BY id DESC',[$branch]) : [];
+        $matches=$info['role']!=='viewer' ? $this->rows('SELECT id,debit_doc,credit_doc,account FROM matches WHERE branch_id=? ORDER BY id DESC',[$branch]) : [];
         $recentSales=$section==='dashboard' ? $this->rows("SELECT d.id,d.day,d.reference,
             MAX(p.name) AS customer,d.details,
             -SUM(CASE WHEN e.account='sales' THEN e.base_minor ELSE 0 END) AS revenue,
