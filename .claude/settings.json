@@ -1,0 +1,63 @@
+{
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v context-mode >/dev/null 2>&1 || exit 0; context-mode hook --agent claude-code",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v context-mode >/dev/null 2>&1 || exit 0; context-mode hook --agent claude-code",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|PowerShell|Read|Grep|WebFetch|Write|Edit|NotebookEdit|mcp__plugin_context-mode_context-mode__ctx_.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v context-mode >/dev/null 2>&1 || exit 0; context-mode hook --agent claude-code",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|PowerShell|Read|Grep|WebFetch|Write|Edit|NotebookEdit|mcp__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v context-mode >/dev/null 2>&1 || exit 0; context-mode hook --agent claude-code",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "^(Bash|PowerShell|Read|Grep|WebFetch|Write|Edit|NotebookEdit|mcp__plugin_context-mode_context-mode__ctx_.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v context-mode >/dev/null 2>&1 || exit 0; context-mode hook --agent claude-code",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
