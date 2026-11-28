@@ -318,7 +318,8 @@ main>ul>li{padding:1rem 1.25rem;background:var(--paper);border-radius:var(--radi
   .statement-paper h2,.document-brand,.statement-meta,.statement-figures{break-after:avoid}
   .statement-table td,.statement-table th{padding:5pt}
   .statement-paper .grid{display:block;columns:2}.statement-paper .grid p{break-inside:avoid}
-  /* Branded A4 printouts: maroon header band and table headings, emphasised totals.
+  /* Branded A4 printouts in the invoice style: light header with logo and company, big maroon title on the far side,
+     maroon table headings, emphasised totals.
      Defining every page margin box replaces the browser's own date/title/URL header and footer in Chrome and Edge. */
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   :root{--thead:#fbf3f7}
@@ -326,13 +327,16 @@ main>ul>li{padding:1rem 1.25rem;background:var(--paper);border-radius:var(--radi
     @top-left{content:""}@top-center{content:""}@top-right{content:""}@bottom-left{content:""}@bottom-right{content:""}
     @bottom-center{content:counter(page) " / " counter(pages);font:8pt Inter,Arial,sans-serif;color:#85144b}}
   a{color:inherit;text-decoration:none}
-  .document-brand{background:#85144b;color:#fff;padding:5mm 6mm;margin-bottom:6mm;border:0;border-radius:2mm;break-inside:avoid}
-  .document-brand img{content:url(midnight-travel-light.png);width:46mm}
-  .document-brand>div{color:#fff;font-size:9pt;line-height:1.55}
-  .document-brand strong{display:block;font-size:12.5pt;color:#fff}
-  .staff main:not(:has(.document-brand))::before{content:"";display:block;height:16mm;margin-bottom:6mm;border-radius:2mm;background:#85144b url(midnight-travel-light.png) 6mm center/auto 10mm no-repeat}
-  html[dir=rtl] .staff main:not(:has(.document-brand))::before{background-position:calc(100% - 6mm) center}
-  .staff .page-heading h1,.statement-paper>h2:first-of-type{color:#85144b;font-size:20pt;font-weight:700;margin:0 0 3mm;border:0;padding:0}
+  .statement-paper{position:relative}
+  .document-brand{display:block;padding:0 0 5mm;margin-bottom:6mm;border-bottom:.75pt solid #e2d4db;break-inside:avoid}
+  .document-brand img{display:block;width:44mm;margin-bottom:2mm}
+  .document-brand>div{text-align:start;color:#5b5f6b;font-size:8.5pt;line-height:1.55;max-width:60%}
+  .document-brand strong{display:block;font-size:12pt;color:#85144b}
+  .statement-paper>h2:first-of-type{position:absolute;top:1mm;inset-inline-end:0;max-width:45%;text-align:end}
+  .staff main:not(:has(.document-brand))::before{content:"";display:block;height:14mm;margin-bottom:5mm;padding-bottom:4mm;border-bottom:.75pt solid #e2d4db;background:url(midnight-travel.png) left top/auto 12mm no-repeat}
+  html[dir=rtl] .staff main:not(:has(.document-brand))::before{background-position:right top}
+  .staff .page-heading h1,.statement-paper>h2:first-of-type{color:#85144b;font-size:22pt;font-weight:700;line-height:1.15;margin:0 0 3mm;border:0;padding:0}
+  html:not([dir=rtl]) :is(.staff .page-heading h1,.statement-paper>h2:first-of-type){text-transform:uppercase;letter-spacing:.04em}
   main h2{color:#85144b;font-size:12pt;padding-bottom:1.5mm;border-bottom:.75pt solid #ead2de;break-after:avoid}
   .statement-meta{margin:0 0 5mm;padding-bottom:4mm;border-bottom:.75pt solid #ead2de}
   .statement-paper small{font-size:7.5pt;color:#7a6a72}
@@ -341,16 +345,15 @@ main>ul>li{padding:1rem 1.25rem;background:var(--paper);border-radius:var(--radi
   .statement-figures>div:last-child{text-align:end}
   .statement-figures>div:last-child strong{color:#85144b;font-size:15pt}
   .context{color:#555}.context span,.role{background:none;padding:0;color:inherit}
-  table{border:.75pt solid #e2d4db;border-collapse:collapse}
+  table{border:0;border-collapse:collapse}
   td{border-bottom:.5pt solid #eee4e9}
   thead th,table:not(.report-values) tr:first-child>th,table.dual-values thead th{background:#85144b;color:#fff;font-size:8pt;font-weight:600;border:0}
   table.dual-values thead th:last-child{background:#6a1039}
   html:not([dir=rtl]) :is(thead th,table:not(.report-values) tr:first-child>th){text-transform:uppercase;letter-spacing:.05em}
-  table:not(.report-values) tbody tr:nth-child(even)>*{background:#fbf7f9}
   tr:hover>td,tbody tr:hover td{background:inherit}
   .statement-table .closing>*,table.report-values tr.closing>*{background:#f3e3eb;color:#85144b;font-weight:700;border-top:1.5pt solid #85144b}
-  .balance-note{margin:4mm 0;padding:3mm 5mm;background:#85144b;color:#fff;border-radius:2mm;font-size:11pt;text-align:end;break-inside:avoid}
-  .statement-paper footer{margin-top:8mm;padding-top:2.5mm;border-top:.75pt solid #85144b;font-size:8pt;color:#6b5a62}
+  .balance-note{margin:5mm 0 0;padding:3mm 0 0;border-top:.75pt solid #e2d4db;color:#85144b;font-size:13pt;font-weight:700;text-align:end;break-inside:avoid}
+  .statement-paper footer{margin-top:10mm;padding-top:3mm;border-top:.75pt solid #e2d4db;font-size:8pt;font-style:italic;color:#7a7e89}
 }
 /* Dual-currency report tables: one column per currency, then the reporting-currency total. */
 .dual-values thead th{color:var(--muted);font-size:.75rem;font-weight:600;letter-spacing:.04em;text-align:end;border-bottom:1px solid var(--line)}
