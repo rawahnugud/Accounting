@@ -650,6 +650,13 @@ final class OfficeController extends AbstractController
             if ($entry) { $doc['import_amount']=Amounts::format(abs((int)$entry[0]['native_minor']),2); }
         }
         if ($doc) { $doc['details']=json_decode($doc['details'],true); }
+        // Sales show their profit in the reporting currency: revenue less supplier cost on this document.
+        if ($doc && in_array($doc['kind'],['sale','reissue','refund'],true)) {
+            $show=function($v,$c) use ($prec) { try { return Amounts::display(Amounts::parse((string)$v,$prec[$c] ?? 2),$prec[$c] ?? 2); } catch (\DomainException) { return $v; } };
+            $doc['price']=$show($doc['details']['amount'] ?? '0',$doc['details']['source'] ?? '');
+            $doc['cost']=$show(($doc['details']['cost'] ?? '') ?: '0',($doc['details']['cost_currency'] ?? '') ?: ($doc['details']['source'] ?? ''));
+            $doc['profit']=Amounts::display(-array_sum(array_map(fn($t)=>in_array($t['account'],['sales','service_cost'],true) ? (int)$t['base'] : 0,$totals)),$prec[$info['base']]);
+        }
         foreach ($preview ?? [] as $i=>$e) {
             $preview[$i]['native']=Amounts::display($e['native'],$prec[$e['currency']]);
             $preview[$i]['base']=Amounts::display($e['base'],$prec[$info['base']]);
