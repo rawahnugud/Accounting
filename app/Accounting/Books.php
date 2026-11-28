@@ -282,8 +282,16 @@ final class Books
                 }
             }
         } elseif ($kind==='reverse') {
-            if ($this->rows('SELECT id FROM matches WHERE debit_doc=? OR credit_doc=? OR fx_doc=?',[$related,$related,$related])) {
-                throw new DomainException('Remove the allocation before reversing a matched document.');
+            // Matching is retired; an old allocation on this document is removed first and its exchange difference reversed.
+            foreach ($this->rows('SELECT * FROM matches WHERE debit_doc=? OR credit_doc=? OR fx_doc=?',[$related,$related,$related]) as $m) {
+                $this->db->prepare('INSERT INTO match_history(branch_id,account,debit_doc,credit_doc,amount_minor,user_id,request_key,fx_doc,removed_by)
+                    SELECT branch_id,account,debit_doc,credit_doc,amount_minor,user_id,request_key,fx_doc,? FROM matches WHERE id=?')->execute([$this->actor,$m['id']]);
+                $this->db->prepare('DELETE FROM matches WHERE id=?')->execute([$m['id']]);
+                if ($m['fx_doc'] && (int)$m['fx_doc']!==$related) {
+                    $fxDay=max($day,$this->one('SELECT day FROM documents WHERE id=?',[$m['fx_doc']])['day']);
+                    $this->build(['kind'=>'reverse','day'=>$fxDay,'reference'=>'Cancel allocation '.$m['id'],
+                        'related'=>(string)$m['fx_doc'],'request_key'=>(string)Uuid::v4()],false);
+                }
             }
             if (!$original || $this->rows('SELECT d.id FROM documents d WHERE d.related_id=? AND NOT EXISTS (SELECT 1 FROM documents x WHERE x.reversal_of=d.id)',[$related])) {
                 throw new DomainException('Reverse linked payments or credits before the original document.');

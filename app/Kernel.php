@@ -26,7 +26,7 @@ final class Kernel extends BaseKernel
         yield new TwigBundle();
     }
 
-    // Rename the folder whenever routes or services change: production does not check the compiled container for staleness.
+    // Production does not check the compiled container for staleness; scripts/upgrade-office.sh deletes this folder after each pull.
     public function getCacheDir(): string
     {
         return ($_SERVER['LARAVEL_STORAGE_PATH'] ?? $this->getProjectDir().'/storage')
@@ -73,6 +73,7 @@ final class Kernel extends BaseKernel
         $services->set(\PDO::class, \PDO::class)->factory([Database::class, 'open']);
         $services->set(Language::class);
         $services->set(FormExpired::class);
+        $services->set(SecurityHeaders::class);
         $services->set(StaffProvider::class);
         $services->set(OfficeController::class)->public();
         $services->set(Staff::class)->public();
@@ -81,9 +82,6 @@ final class Kernel extends BaseKernel
     protected function configureRoutes(RoutingConfigurator $routes): void
     {
         // Short single-branch paths; ?branch=N only appears for a branch other than the user's main one.
-        $routes->add('match_items','/matches')->controller([OfficeController::class,'matchItems'])->defaults(['branch'=>0])->methods(['POST']);
-        $routes->add('match_items_old','/branches/{branch}/matches')->controller([OfficeController::class,'matchItems'])
-            ->requirements(['branch'=>'\d+'])->methods(['POST']);
         $routes->add('overview','/overview')->controller([OfficeController::class,'overview'])->methods(['GET']);
         $routes->add('control','/settings')->controller([OfficeController::class,'control'])->methods(['GET','POST']);
         $routes->add('office','/{section}/{doc}')->controller([OfficeController::class,'office'])->defaults(['branch'=>0,'doc'=>''])
