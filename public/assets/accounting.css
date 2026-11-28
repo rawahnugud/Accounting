@@ -486,3 +486,12 @@ main nav.tabs a[aria-current]{background:var(--wine);color:#fff;box-shadow:0 1px
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
 }
+/* Total currency picker in the top bar, and the report's currency-column and section checkboxes. */
+.view-currency{display:inline-flex;align-items:center;margin:0}
+.view-currency label{display:inline-flex;align-items:center;gap:.4rem;margin:0;font-size:.84rem;font-weight:600;color:var(--muted)}
+.view-currency select{width:auto;min-height:0;padding:.3rem .5rem}
+.report-options{display:flex;flex-wrap:wrap;gap:.35rem 1rem;margin:0;padding:.6rem .8rem;border:1px solid var(--line,#ddd);border-radius:var(--radius)}
+.report-options legend{padding:0 .3rem;font-size:.84rem;font-weight:600}
+.report-options label{display:inline-flex;align-items:center;gap:.3rem;margin:0;font-weight:400}
+.report-options input{width:auto;min-height:0}
+@media print{.view-currency,.report-options{display:none!important}}

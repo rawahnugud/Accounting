@@ -8,9 +8,17 @@ final class Reports
 {
     public function __construct(private PDO $db) {}
 
-    /** Period performance and cash flows use movements. The balance sheet is cumulative through the end date. */
-    public function statements(int $branch,string $from,string $to,string $group): array
+    /**
+     * Period performance and cash flows use movements. The balance sheet is cumulative through the end date.
+     * $value(currency,native,base) gives the amount shown in the chosen total currency; by default the booked reporting amount.
+     * $account limits profit, profitability and cash movements to documents that touch that account (for example customer:4).
+     */
+    public function statements(int $branch,string $from,string $to,string $group,?callable $value=null,string $account=''): array
     {
+        $value ??= static fn(string $currency,int $native,int $base):int=>$base;
+        $only=$account==='' ? '' : ' AND number IN (SELECT \'D-\'||document_id FROM entries WHERE account=?)';
+        $onlyDoc=$account==='' ? '' : ' AND d.id IN (SELECT document_id FROM entries WHERE account=?)';
+        $extra=$account==='' ? [] : [$account];
         $dimensions=[
             'service'=>'COALESCE(original.details,d.details)',
             'airline'=>'COALESCE(original.details,d.details)',
@@ -23,7 +31,7 @@ final class Reports
         $rows=function(string $sql,array $args):array {
             $q=$this->db->prepare($sql); $q->execute($args); return $q->fetchAll(PDO::FETCH_ASSOC);
         };
-        // Every figure is kept twice: per currency in native amounts (dual), and as the USD total (base_minor).
+        // Every figure is kept twice: per currency in native amounts (dual), and as the total in the chosen currency.
         $dual=['profit'=>[],'sheet'=>[],'flows'=>[]];
         $currencies=[];
         $add=function(string $part,string $label,string $currency,int $native) use (&$dual,&$currencies):void {
@@ -32,22 +40,22 @@ final class Reports
         };
         $profit=[];
         foreach ($rows("SELECT account,currency,SUM(native_minor) AS native,SUM(base_minor) AS amount FROM ledger WHERE branch_id=? AND day BETWEEN ? AND ?
-            AND account IN ('sales','service_cost','salary_expense','fx') GROUP BY account,currency",[$branch,$from,$to]) as $r) {
-            $profit[$r['account']]=($profit[$r['account']] ?? 0)-$r['amount'];
+            AND account IN ('sales','service_cost','salary_expense','fx')$only GROUP BY account,currency",[$branch,$from,$to,...$extra]) as $r) {
+            $profit[$r['account']]=($profit[$r['account']] ?? 0)-$value($r['currency'],(int)$r['native'],(int)$r['amount']);
             $add('profit',$r['account'],$r['currency'],-(int)$r['native']);
         }
         // Split other expenses by the category saved on fee and creditor obligation documents; a reversal uses its original's category.
         foreach ($rows("SELECT COALESCE(o.details,d.details) AS details,e.currency,SUM(e.native_minor) AS native,SUM(e.base_minor) AS amount FROM entries e JOIN documents d ON d.id=e.document_id
-            LEFT JOIN documents o ON o.id=d.reversal_of WHERE d.branch_id=? AND d.day BETWEEN ? AND ? AND e.account='expense' GROUP BY 1,2",[$branch,$from,$to]) as $r) {
+            LEFT JOIN documents o ON o.id=d.reversal_of WHERE d.branch_id=? AND d.day BETWEEN ? AND ? AND e.account='expense'$onlyDoc GROUP BY 1,2",[$branch,$from,$to,...$extra]) as $r) {
             $label=(json_decode($r['details'],true)['category'] ?? '') ?: 'expense';
-            $profit[$label]=($profit[$label] ?? 0)-$r['amount'];
+            $profit[$label]=($profit[$label] ?? 0)-$value($r['currency'],(int)$r['native'],(int)$r['amount']);
             $add('profit',$label,$r['currency'],-(int)$r['native']);
         }
         $balances=$rows("SELECT account,currency,SUM(native_minor) AS native,SUM(base_minor) AS amount FROM ledger WHERE branch_id=? AND day<=? GROUP BY account,currency",[$branch,$to]);
         $sheet=['Cash'=>0,'Receivables'=>0,'Staff advances'=>0,'Supplier prepayments'=>0,'Customer deposits'=>0,
             'Supplier payables'=>0,'Creditor obligations'=>0,'Payroll payable'=>0,'Owner equity'=>0,'Accumulated earnings'=>0];
         foreach ($balances as $r) {
-            $amount=(int)$r['amount']; $native=(int)$r['native'];
+            $native=(int)$r['native']; $amount=$value($r['currency'],$native,(int)$r['amount']);
             [$label,$sign]=match(explode(':',$r['account'])[0]) {
                 'cash'=>['Cash',1], 'advance'=>['Staff advances',1],
                 'customer'=>$amount>=0?['Receivables',1]:['Customer deposits',-1],
@@ -63,29 +71,26 @@ final class Reports
         $sheet=array_slice($sheet,0,4)+['Total assets'=>$assets]+array_slice($sheet,4)+['Total liabilities and equity'=>$claims];
         if ($assets!==$claims) { $sheet['Unbalanced difference']=$assets-$claims; }
         $flows=[];
-        foreach ($rows("SELECT kind,currency,SUM(native_minor) AS native,SUM(base_minor) AS amount FROM ledger WHERE branch_id=? AND day BETWEEN ? AND ? AND account LIKE 'cash:%' GROUP BY kind,currency",[$branch,$from,$to]) as $r) {
-            $flows[$r['kind']]=($flows[$r['kind']] ?? 0)+$r['amount'];
+        foreach ($rows("SELECT kind,currency,SUM(native_minor) AS native,SUM(base_minor) AS amount FROM ledger WHERE branch_id=? AND day BETWEEN ? AND ? AND account LIKE 'cash:%'$only GROUP BY kind,currency",[$branch,$from,$to,...$extra]) as $r) {
+            $flows[$r['kind']]=($flows[$r['kind']] ?? 0)+$value($r['currency'],(int)$r['native'],(int)$r['amount']);
             $add('flows',$r['kind'],$r['currency'],(int)$r['native']);
         }
         $currencies=array_keys($currencies);
         sort($currencies);
-        $performance=$rows("SELECT COALESCE(NULLIF($dimension,''),'Unspecified') AS label,
-            -SUM(CASE WHEN e.account='sales' THEN e.base_minor ELSE 0 END) AS sales,
-            SUM(CASE WHEN e.account='service_cost' THEN e.base_minor ELSE 0 END) AS cost
+        $grouped=[];
+        foreach ($rows("SELECT COALESCE(NULLIF($dimension,''),'Unspecified') AS label,e.account,e.currency,SUM(e.native_minor) AS native,SUM(e.base_minor) AS base
             FROM documents d JOIN entries e ON e.document_id=d.id JOIN users u ON u.id=d.user_id
             LEFT JOIN documents original ON original.id=d.reversal_of
-            WHERE d.branch_id=? AND d.day BETWEEN ? AND ? AND e.account IN ('sales','service_cost') GROUP BY label ORDER BY label",[$branch,$from,$to]);
-        if (in_array($group,['service','airline'],true)) {
-            $grouped=[];
-            foreach ($performance as $r) {
-                $label=(json_decode($r['label'],true)[$group] ?? '') ?: 'Unspecified';
-                $grouped[$label] ??= ['label'=>$label,'sales'=>0,'cost'=>0];
-                $grouped[$label]['sales']+=$r['sales'];
-                $grouped[$label]['cost']+=$r['cost'];
-            }
-            $performance=array_values($grouped);
+            WHERE d.branch_id=? AND d.day BETWEEN ? AND ? AND e.account IN ('sales','service_cost')$onlyDoc GROUP BY label,e.account,e.currency",[$branch,$from,$to,...$extra]) as $r) {
+            $label=in_array($group,['service','airline'],true) ? ((json_decode($r['label'],true)[$group] ?? '') ?: 'Unspecified') : $r['label'];
+            $grouped[$label] ??= ['label'=>$label,'sales'=>0,'cost'=>0];
+            $v=$value($r['currency'],(int)$r['native'],(int)$r['base']);
+            if ($r['account']==='sales') { $grouped[$label]['sales']-=$v; } else { $grouped[$label]['cost']+=$v; }
         }
+        ksort($grouped);
+        $performance=array_values($grouped);
         $exposure=$rows('SELECT currency,SUM(native_minor) AS native,SUM(base_minor) AS base FROM ledger WHERE branch_id=? AND day<=? AND instr(account,\':\')>0 GROUP BY currency',[$branch,$to]);
+        foreach ($exposure as &$r) { $r['base']=$value($r['currency'],(int)$r['native'],(int)$r['base']); } unset($r);
         return compact('group','profit','sheet','flows','performance','exposure','dual','currencies');
     }
 

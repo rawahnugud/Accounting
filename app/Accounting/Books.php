@@ -55,6 +55,11 @@ final class Books
         $factor=10**(6+$rate['base_places']-$rate['places']);
         return $toBase ? Amounts::ratio($amount,$factor,$scaled) : Amounts::ratio($amount,$scaled,$factor);
     }
+    /** A reporting-currency amount shown in another currency at the rate on the day. Read only; nothing is posted. */
+    public function fromBase(int $base,string $currency,string $day): int
+    {
+        return $this->convert($base,$this->rate($currency,$day),false);
+    }
     /**
      * Restate foreign-currency balances at the day's rate and post the difference to exchange differences.
      * The adjustment reverses the next day, so later settlements still book FX against historical carrying values.

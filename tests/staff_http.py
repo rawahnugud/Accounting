@@ -222,6 +222,11 @@ with tempfile.TemporaryDirectory() as temp:
         assert "Outstanding" in call("/receipt")
         assert "Sales this month" in call("/dashboard") and "Bank and safe balances" in call("/dashboard") and "Match open items" not in call("/dashboard")
         assert "Total in" in call("/dashboard") and "Total in" in call("/reports")
+        # Choosing GBP as the total currency is remembered across screens; report columns, sections and presets filter the output.
+        gbp=call("/reports?in=GBP&period=year&cols[]=&show[]=&show[]=profit&account=customer:1")
+        assert "<th><bdi>USD</bdi></th>" not in gbp and "<bdi>GBP</bdi></th></tr></thead>" in gbp and "Balance sheet at" not in gbp
+        assert '<option selected>GBP</option>' in call("/dashboard") and "<bdi>GBP</bdi>" in call("/ledger")
+        call("/reports?in=USD")
         viewer_id=conn.execute("SELECT id FROM users WHERE email='viewer@example.test'").fetchone()[0]
         admin_id=conn.execute("SELECT id FROM users WHERE is_admin=1 ORDER BY id LIMIT 1").fetchone()[0]
         call("/settings",dict(_token=token,action="access",user=viewer_id,branch=1,role="admin"))

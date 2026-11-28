@@ -140,6 +140,14 @@ $sdgFee=$post('fee',['cash'=>2,'amount'=>'5000','day'=>'2027-01-12']);
 same($db->query("SELECT currency||':'||native_minor FROM entries WHERE document_id=$sdgFee AND account='expense'")->fetchColumn(),'SDG:500000');
 $dual=(new App\Accounting\Reports($db))->statements(1,'2027-01-12','2027-01-12','service')['dual'];
 same([$dual['profit']['sales']['USD'],$dual['profit']['expense']['SDG']],[1000,-500000]);
+// Totals in SDG: SDG amounts stay as booked, USD converts its reporting value at the end date's rate (5000).
+$inSdg=fn(string $c,int $native,int $base):int=>$c==='SDG' ? $native : $book->fromBase($base,'SDG','2027-01-12');
+$sdgReport=(new App\Accounting\Reports($db))->statements(1,'2027-01-12','2027-01-12','service',$inSdg);
+$sdgSales=$sdgReport['dual']['profit']['sales']['SDG']+$sdgReport['dual']['profit']['sales']['USD']*5000;
+same([$sdgReport['profit']['sales'],$sdgReport['profit']['expense']],[$sdgSales,-500000]);
+same(array_sum(array_column($sdgReport['performance'],'sales')),$sdgSales);
+// A customer filter keeps only that customer's documents in profit.
+same(array_keys((new App\Accounting\Reports($db))->statements(1,'2027-01-12','2027-01-12','service',null,'customer:8')['profit']),['sales']);
 echo "PASS exchange-rate override on transfers and receipts, refunds keep ticket details, advances recovered at carrying value, dual-currency postings and report columns\n";
 $sdgCash=fn()=>$db->query("SELECT SUM(native_minor),SUM(base_minor) FROM ledger WHERE account='cash:2' AND day<='2027-01-31'")->fetch(PDO::FETCH_NUM);
 [$native]=$sdgCash();
