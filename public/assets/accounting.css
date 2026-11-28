@@ -321,9 +321,11 @@ main>ul>li{padding:1rem 1.25rem;background:var(--paper);border-radius:var(--radi
   /* Quiet A4 printouts: black on white, maroon (#85144b) only for the title and the header rule. */
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   :root{--thead:transparent;--ink:#26282a;--body:#26282a;--muted:#6b6e72}
+  /* One font family for English and Arabic: Segoe UI on Windows, Noto or Arial elsewhere. */
+  :root,html[dir=rtl]{font:10pt/1.5 "Segoe UI","Noto Sans","Noto Sans Arabic",Arial,sans-serif}
   @page{margin:14mm 14mm 16mm;
     @top-left{content:""}@top-center{content:""}@top-right{content:""}@bottom-left{content:""}@bottom-right{content:""}
-    @bottom-center{content:counter(page) " / " counter(pages);font:8pt Inter,Arial,sans-serif;color:#6b6e72}}
+    @bottom-center{content:counter(page) " / " counter(pages);font:8pt "Segoe UI",Arial,sans-serif;color:#6b6e72}}
   a{color:inherit;text-decoration:none}
   .statement-paper{position:relative}
   .document-brand{display:block;padding:0 0 5mm;margin-bottom:6mm;border-bottom:1pt solid #85144b;break-inside:avoid}
@@ -336,16 +338,14 @@ main>ul>li{padding:1rem 1.25rem;background:var(--paper);border-radius:var(--radi
   .staff .page-heading h1,.statement-paper>h2:first-of-type{color:#85144b;font-size:20pt;font-weight:600;line-height:1.15;margin:0 0 3mm;border:0;padding:0}
   main h2{color:#26282a;font-size:11.5pt;font-weight:600;margin-top:6mm;break-after:avoid}
   .statement-meta{margin:0 0 5mm}
-  .statement-paper small{font-size:7.5pt;color:#6b6e72}
-  html:not([dir=rtl]) :is(.statement-meta,.statement-figures) small{text-transform:uppercase;letter-spacing:.06em}
+  .statement-paper small{font-size:8pt;color:#6b6e72}
   .statement-figures,.sale-summary,.doc-card .sale-summary{background:none;border:0;border-top:.5pt solid #d6d7d9;border-bottom:.5pt solid #d6d7d9;border-radius:0;padding:3mm 0;box-shadow:none}
   .statement-figures>div:last-child{text-align:end}
   .statement-figures strong{font-size:13pt}
   .context{color:#6b6e72}.context span,.role{background:none;padding:0;color:inherit}
   table{border:0;border-collapse:collapse}
   td{border-bottom:.5pt solid #e6e7e8;background:none}
-  thead th,table:not(.report-values) tr:first-child>th,table.dual-values thead th{background:none;color:#26282a;font-size:7.5pt;font-weight:600;border:0;border-bottom:1pt solid #26282a}
-  html:not([dir=rtl]) :is(thead th,table:not(.report-values) tr:first-child>th){text-transform:uppercase;letter-spacing:.05em}
+  thead th,table:not(.report-values) tr:first-child>th,table.dual-values thead th{background:none;color:#26282a;font-size:8.5pt;font-weight:600;border:0;border-bottom:1pt solid #26282a}
   table.dual-values td:last-child,table.dual-values thead th:last-child{background:none}
   tr:hover>td,tbody tr:hover td{background:inherit}
   .statement-table .closing>*,table.report-values tr.closing>*{background:none;color:#26282a;font-weight:700;border-top:1pt solid #26282a;border-bottom:0}
