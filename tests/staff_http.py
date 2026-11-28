@@ -196,6 +196,11 @@ with tempfile.TemporaryDirectory() as temp:
         assert "Closing balance" in customer_copy and "586.25" in customer_copy and "/edit/" in customer_copy and "Void" not in customer_copy
         assert "Supplier One" not in customer_copy.split('<article class="statement-paper">',1)[1].split('</article>',1)[0]
         assert "Closing balance" in call(statement_url+"&download=csv")
+        assert 'href="/receipt?customer=1&amp;back=' in customer_copy
+        balances=call("/statement")
+        assert "Customers who owe us" in balances and re.search(r'href="/statement\?account=customer(?:%3A|:)1[^"]*">Client A</a>',balances)
+        receipt=call("/receipt?customer=1&back=/statement?account=customer:1")
+        assert re.search(r'<option value="1"[^>]*selected>Client A',receipt) and 'name="back" value="/statement?account=customer:1"' in receipt
         call(statement_url,dict(_token=token,external="580",side="Dr"),403)
         call(statement_url.replace("customer:1","customer:999999"),status=404)
         call("/settings",dict(_token=token,action="currency",branch=1,code="GBP",precision="2",initial_rate="2000"))

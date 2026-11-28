@@ -222,8 +222,12 @@ main>ul>li{padding:1rem 1.25rem;background:var(--paper);border-radius:var(--radi
 .statement-meta strong,.statement-figures strong{display:block;font-size:1.15rem;color:var(--ink)}
 .statement-figures{background:var(--thead);padding:1rem 1.3rem;margin:1rem 0;border-radius:var(--radius);border-inline-start:3px solid var(--wine)}
 .statement-paper .scroll{box-shadow:none;border:1px solid var(--line)}
-.statement-table td:nth-last-child(-n+3),.statement-table th:nth-last-child(-n+3){text-align:end}
-.statement-table td:first-child,.statement-table th:nth-last-child(n+4){text-align:start}
+.statement-table td,.statement-table th{text-align:start}
+.statement-table .num{text-align:end;white-space:nowrap}
+.statement-find{margin-inline-start:auto;min-width:min(100%,18rem)}
+.statement-balances{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));align-items:start;margin-top:1rem}
+.statement-balances h2{font-size:1rem;margin:0 0 .75rem}
+.statement-balances td:last-child,.statement-balances th:last-child{text-align:end;white-space:nowrap}
 .statement-table .closing>*{font-weight:700;background:var(--thead)}
 .statement-paper footer{border-top:1px solid var(--line);margin-top:1.5rem;padding-top:.7rem;color:var(--muted);font-size:.85rem}
 .internal-check{max-width:1080px;margin:1.25rem auto}
