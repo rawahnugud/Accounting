@@ -637,7 +637,7 @@
   "No lines match your search.": "لا توجد قيود مطابقة للبحث.",
   "Money in": "وارد",
   "Money out": "صادر",
-  "Move a balance between accounts": "نقل رصيد بين الحسابات",
+  "Journal transfer": "قيد تحويل",
   "The From account is credited and the To account is debited, for example when a client pays a supplier or creditor directly.": "يُقيَّد المبلغ دائنًا في حساب «من» ومدينًا في حساب «إلى»، مثلًا عندما يدفع العميل للمورد أو الدائن مباشرة.",
   "To": "إلى",
   "To amount": "المبلغ في حساب «إلى»",
@@ -647,6 +647,5 @@
   "Export": "تصدير",
   "Saved": "محفوظ",
   "Profit": "الربح",
-  "Accounting details": "التفاصيل المحاسبية",
-  "Move balance": "نقل الرصيد"
+  "Accounting details": "التفاصيل المحاسبية"
 }
