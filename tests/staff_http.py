@@ -66,7 +66,7 @@ with tempfile.TemporaryDirectory() as temp:
         for role in ["viewer","cashier"]:
             client = request.build_opener(request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
             login = call("/branches/1")
-            assert "Staff sign in" in login
+            assert "Staff sign in" in login and "/favicon.ico" in login
             creds = {"email":role+"@example.test","password":"wrong","_token":field(login,"_token")}
             assert "Unable to sign in" in call("/login",creds)
             creds["password"] = password
