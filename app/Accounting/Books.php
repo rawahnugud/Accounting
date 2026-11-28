@@ -337,9 +337,14 @@ final class Books
                     $to=$this->rate($accounts[0][1],$day);
                     $native=Amounts::parse($meta['to_amount'],$to['places']);
                     if (!$native) { throw new DomainException('Amount must round to a positive reporting amount.'); }
-                    $scaled=Amounts::ratio($native,10**(6+$to['base_places']-$to['places']),$lines[0]['base']);
-                    $lines[0]['native']=$native;
-                    $lines[0]['rate']=rtrim(rtrim(Amounts::format($scaled,6),'0'),'.');
+                    $implied=fn(int $minor,array $r,int $value)=>rtrim(rtrim(Amounts::format(Amounts::ratio($minor,10**(6+$r['base_places']-$r['places']),$value),6),'0'),'.');
+                    if ($accounts[0][1]===$base) {
+                        // A reporting-currency To account keeps native and reporting values equal, so the agreed amount sets the From side's value.
+                        $lines[0]=array_replace($lines[0],['native'=>$native,'base'=>$native,'rate'=>'1']);
+                        $lines[1]=array_replace($lines[1],['base'=>-$native,'rate'=>$implied(-$lines[1]['native'],$this->rate($source,$day),$native)]);
+                    } else {
+                        $lines[0]=array_replace($lines[0],['native'=>$native,'rate'=>$implied($native,$to,$lines[0]['base'])]);
+                    }
                 }
             }
             if ($original) {

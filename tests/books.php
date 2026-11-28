@@ -206,3 +206,9 @@ denied(fn()=>$post('balance_transfer',['from'=>'customer:1','to'=>'creditor:4','
 denied(fn()=>$post('balance_transfer',['from'=>'cash:1','to'=>'creditor:4','amount'=>'1','day'=>'2027-02-10']));
 same((int)$db->query('SELECT COUNT(*) FROM (SELECT document_id FROM entries GROUP BY document_id HAVING SUM(base_minor)<>0)')->fetchColumn(),0);
 echo "PASS balance transfers between parties across currencies, agreed To amount, edit and delete\n";
+// An agreed USD To amount keeps the USD account's native and reporting values equal.
+$usd=$post('balance_transfer',['from'=>'creditor:21','to'=>'creditor:4','amount'=>'50000','to_amount'=>'12','day'=>'2027-02-10']);
+same($moved($usd),['creditor:4:1200:1200','creditor:21:-5000000:-1200']);
+same($db->query("SELECT rate FROM entries WHERE document_id=$usd AND account='creditor:21'")->fetchColumn(),'4166.666667');
+same((int)$db->query('SELECT COUNT(*) FROM (SELECT document_id FROM entries GROUP BY document_id HAVING SUM(base_minor)<>0)')->fetchColumn(),0);
+echo "PASS agreed reporting-currency To amount keeps native and reporting values equal\n";
