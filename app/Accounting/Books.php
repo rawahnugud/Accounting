@@ -17,7 +17,7 @@ final class Books
         'payroll'=>'Accrue salary', 'salary_payment'=>'Pay salary', 'advance'=>'Employee advance', 'recovery'=>'Recover advance from salary',
         'opening_party'=>'Opening customer or supplier balance', 'opening'=>'Opening cash balance', 'deposit'=>'Owner contribution', 'withdrawal'=>'Owner withdrawal',
         'fee'=>'Bank fee or expense', 'transfer'=>'Bank or safe transfer',
-        'balance_transfer'=>'Move a balance between accounts', 'reverse'=>'Reverse or delete document'
+        'balance_transfer'=>'Journal transfer', 'reverse'=>'Reverse or delete document'
     ];
     public function __construct(private PDO $db, private int $branch, private int $actor) {}
     public function rows(string $sql, array $args=[]): array
