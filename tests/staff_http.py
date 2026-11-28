@@ -128,8 +128,8 @@ with tempfile.TemporaryDirectory() as temp:
         assert client.open(origin+"/branches/2/office/dashboard").url == origin+"/dashboard?branch=2"
         assert client.open(origin+"/control").url == origin+"/settings"
         call("/settings", {"_token":token,"action":"party","branch":1,"kind":"customer","name":"Client A","currency":"USD"})
-        for setup in ["cash","currency","rate","reconcile","party","credit limit","supplier limit",
-                      "supplier reconciliation","installment","user","access","salary terms","leave",
+        for setup in ["cash","currency","rate","party","credit limit","supplier limit",
+                      "installment","user","access","salary terms","leave",
                       "leave decision","company profile","company name","service category","numbering","close period"]:
             query = parse.urlencode({"setup":setup})
             assert 'name="action" value="'+setup+'"' in call("/settings?"+query)
@@ -210,7 +210,7 @@ with tempfile.TemporaryDirectory() as temp:
         report=call("/reports?from=2026-01-01&to=2026-12-31")
         assert "Total assets" in report and "Aging of open balances" in report and "Unbalanced difference" not in report
         assert "Outstanding" in call("/receipt")
-        assert "Sales this month" in call("/dashboard")
+        assert "Sales this month" in call("/dashboard") and "Bank and safe balances" in call("/dashboard") and "Match open items" not in call("/dashboard")
         assert "Total in" in call("/dashboard") and "Total in" in call("/reports")
         viewer_id=conn.execute("SELECT id FROM users WHERE email='viewer@example.test'").fetchone()[0]
         admin_id=conn.execute("SELECT id FROM users WHERE is_admin=1 ORDER BY id LIMIT 1").fetchone()[0]

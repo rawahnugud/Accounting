@@ -690,7 +690,7 @@ final class OfficeController extends AbstractController
         } unset($t);
         $metrics['Gross profit']=$metrics['Sales']-$metrics['Supplier costs'];
         $metrics['Cash after obligations']=$metrics['Cash']-$metrics['Supplier payables']-$metrics['Other obligations'];
-        $dual=[];
+        $dual=[]; $banks=[];
         if ($section==='dashboard') {
             $month=$this->rows("SELECT account,currency,SUM(native_minor) AS native,SUM(base_minor) AS base FROM ledger WHERE branch_id=? AND day BETWEEN ? AND ?
                 AND account IN ('sales','service_cost') GROUP BY account,currency",[$branch,date('Y-m-01'),date('Y-m-d')]);
@@ -710,6 +710,12 @@ final class OfficeController extends AbstractController
             }
             foreach ($month as $r) { if ($r['account']==='sales') { $dual['Sales this month'][$r['currency']]=($dual['Sales this month'][$r['currency']] ?? 0)-(int)$r['native']; } }
             foreach ($dual as &$byCurrency) { foreach ($byCurrency as $c=>&$v) { $v=Amounts::display($v,$prec[$c]); } unset($v); } unset($byCurrency);
+            // One row per bank or safe, including ones with no movements yet.
+            $byAccount=array_column($totals,null,'account');
+            foreach ($cash as $a) {
+                $t=$byAccount['cash:'.$a['id']] ?? null;
+                $banks[]=$a+['balance'=>$t['amount'] ?? Amounts::display(0,$prec[$a['currency']]),'report'=>$t['report'] ?? Amounts::display(0,$prec[$info['base']])];
+            }
         }
         foreach ($metrics as &$v) { $v=Amounts::display($v,$prec[$info['base']]); } unset($v);
         $doc=$query->getInt('doc') ? ($this->rows('SELECT d.*,EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) AS voided,u.name AS staff,n.label,cp.address,cp.contact,cp.registration FROM documents d JOIN users u ON u.id=d.user_id LEFT JOIN document_numbers n ON n.document_id=d.id JOIN branches b ON b.id=d.branch_id LEFT JOIN company_profiles cp ON cp.company_id=b.company_id WHERE d.branch_id=? AND d.id=?',[$branch,$query->getInt('doc')])[0] ?? null) : null;
@@ -761,7 +767,7 @@ final class OfficeController extends AbstractController
             $preview[$i]['native']=Amounts::display($e['native'],$prec[$e['currency']]);
             $preview[$i]['base']=Amounts::display($e['base'],$prec[$info['base']]);
         }
-        return $this->render('office.html.twig',['branch'=>$link]+compact('section','info','metrics','dual','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','recs','pending','checks','matches','back')+[
+        return $this->render('office.html.twig',['branch'=>$link]+compact('section','info','metrics','dual','banks','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','recs','pending','checks','matches','back')+[
             'recentSales'=>$recentSales,'adminTypes'=>Books::ADMIN_TYPES,'truncated'=>$truncated,'expenseCategories'=>Books::EXPENSE_CATEGORIES,
             'recentDocs'=>$section==='post' ? $this->rows('SELECT id,reference,day FROM documents d WHERE branch_id=? AND reversal_of IS NULL AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY id DESC LIMIT 100',[$branch]) : [],
             'types'=>Books::TYPES,'key'=>(string)Uuid::v4(),'today'=>date('Y-m-d'),
