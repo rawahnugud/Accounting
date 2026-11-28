@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "plugin_context-mode_context-mode": {
+      "command": "context-mode",
+      "args": [
+        "server",
+        "--agent",
+        "claude-code"
+      ]
+    }
+  }
+}
