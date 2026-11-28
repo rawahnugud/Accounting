@@ -54,12 +54,12 @@ final class OfficeController extends AbstractController
             $currency=$row['currency'];
             foreach (['sales','cash','profit'] as $col) {
                 $totals[$currency][$col]=($totals[$currency][$col] ?? 0)+$row[$col];
-                $row[$col]=Amounts::format($row[$col],$row['decimals']);
+                $row[$col]=Amounts::display($row[$col],$row['decimals']);
             }
             $totals[$currency]['precision']=$row['decimals'];
         } unset($row);
         foreach ($totals as &$group) {
-            foreach (['sales','cash','profit'] as $col) { $group[$col]=Amounts::format($group[$col],$group['precision']); }
+            foreach (['sales','cash','profit'] as $col) { $group[$col]=Amounts::display($group[$col],$group['precision']); }
         } unset($group);
         return $this->render('overview.html.twig',compact('rows','totals'));
     }
@@ -433,8 +433,14 @@ final class OfficeController extends AbstractController
             foreach ($cash as $a) {
                 $accounts['cash:'.$a['id']]=['group'=>ucfirst($a['kind']),'name'=>$a['name'],'currency'=>$a['currency']];
             }
+            // General accounts hold every currency since dual-currency posting; each currency gets its own statement (key "sales@SDG").
+            $glCurrencies=[];
+            foreach ($this->rows("SELECT DISTINCT account,currency FROM ledger WHERE branch_id=? AND instr(account,':')=0",[$branch]) as $row) { $glCurrencies[$row['account']][]=$row['currency']; }
             foreach ($names as $key=>$label) {
-                if (!str_contains($key,':')) { $accounts[$key]=['group'=>'General ledger','name'=>$label,'currency'=>$info['base']]; }
+                if (str_contains($key,':')) { continue; }
+                foreach (array_unique([$info['base'],...($glCurrencies[$key] ?? [])]) as $c) {
+                    $accounts[$c===$info['base']?$key:"$key@$c"]=['group'=>'General ledger','name'=>$c===$info['base']?$label:"$label · $c",'currency'=>$c];
+                }
             }
             $groups=[];
             foreach ($accounts as $key=>$item) { $groups[$item['group']][$key]=$item; }
@@ -460,7 +466,7 @@ final class OfficeController extends AbstractController
                 Books::date($from); Books::date($to);
                 if ($from>$to) { throw new DomainException('Start date is after end date.'); }
                 if ($account) {
-                    $statement=(new AccountStatement($this->db))->read($branch,$selected,$account['currency'],$prec[$account['currency']],$from,$to);
+                    $statement=(new AccountStatement($this->db))->read($branch,explode('@',$selected)[0],$account['currency'],$prec[$account['currency']],$from,$to);
                 }
                 if ($checking) {
                     if (!$statement || !$account) { throw new DomainException('Choose an account.'); }
@@ -519,26 +525,34 @@ final class OfficeController extends AbstractController
             } catch (DomainException $e) { throw new HttpException(422,$e->getMessage()); }
             $report=(new Reports($this->db))->statements($branch,$from,$to,$query->get('group','service'))+['today'=>date('Y-m-d')];
             $report['aging']=(new Reports($this->db))->aging($branch,$report['today']);
-            $netProfit=Amounts::format(array_sum($report['profit']),$prec[$info['base']]);
+            $netProfit=Amounts::display(array_sum($report['profit']),$prec[$info['base']]);
+            // Reporting currency first, then the other currencies in use.
+            $currencies=array_values(array_unique([$info['base'],...$report['currencies']]));
+            $netNative=[];
+            foreach ($report['dual']['profit'] as $byCurrency) { foreach ($byCurrency as $c=>$v) { $netNative[$c]=($netNative[$c] ?? 0)+$v; } }
+            $report['dual']['net']=['Net profit'=>$netNative];
+            foreach ($report['dual'] as &$labels) {
+                foreach ($labels as &$byCurrency) { foreach ($byCurrency as $c=>&$v) { $v=Amounts::display($v,$prec[$c]); } unset($v); } unset($byCurrency);
+            } unset($labels);
             foreach (['profit','sheet'] as $part) {
-                foreach ($report[$part] as &$v) { $v=Amounts::format($v,$prec[$info['base']]); } unset($v);
+                foreach ($report[$part] as &$v) { $v=Amounts::display($v,$prec[$info['base']]); } unset($v);
             }
             foreach ($report['performance'] as &$row) {
-                $row['margin']=Amounts::format($row['sales']-$row['cost'],$prec[$info['base']]);
-                foreach (['sales','cost'] as $col) { $row[$col]=Amounts::format($row[$col],$prec[$info['base']]); }
+                $row['margin']=Amounts::display($row['sales']-$row['cost'],$prec[$info['base']]);
+                foreach (['sales','cost'] as $col) { $row[$col]=Amounts::display($row[$col],$prec[$info['base']]); }
             } unset($row);
-            foreach ($report['flows'] as &$row) { $row['amount']=Amounts::format($row['amount'],$prec[$info['base']]); } unset($row);
+            foreach ($report['flows'] as &$v) { $v=Amounts::display((int)$v,$prec[$info['base']]); } unset($v);
             foreach ($report['aging'] as &$row) {
                 $row['name']=$names[$row['account']] ?? $row['account'];
-                foreach ($row['buckets'] as &$v) { $v=Amounts::format($v,$prec[$row['currency']]); } unset($v);
-                $row['total']=Amounts::format($row['total'],$prec[$row['currency']]);
+                foreach ($row['buckets'] as &$v) { $v=Amounts::display($v,$prec[$row['currency']]); } unset($v);
+                $row['total']=Amounts::display($row['total'],$prec[$row['currency']]);
             } unset($row);
             foreach ($report['exposure'] as &$row) {
-                $row['native']=Amounts::format($row['native'],$prec[$row['currency']]);
-                $row['base']=Amounts::format($row['base'],$prec[$info['base']]);
+                $row['native']=Amounts::display($row['native'],$prec[$row['currency']]);
+                $row['base']=Amounts::display($row['base'],$prec[$info['base']]);
             } unset($row);
             $profile=$this->rows('SELECT p.* FROM company_profiles p JOIN branches b ON b.company_id=p.company_id WHERE b.id=?',[$branch])[0] ?? [];
-            return $this->render('statements.html.twig',compact('report','profile','info','from','to','names','branch','netProfit'));
+            return $this->render('statements.html.twig',compact('report','profile','info','from','to','names','branch','netProfit','currencies'));
         }
         $where=['branch_id=?']; $args=[$branch];
         foreach (['from'=>'day>=?','to'=>'day<=?','account'=>'account=?','user'=>'user_id=?','doc'=>"number='D-'||?",'number'=>'number=?'] as $key=>$clause) {
@@ -601,21 +615,36 @@ final class OfficeController extends AbstractController
             case 'service_cost': $metrics['Supplier costs']+=$v; break;
             }
             if (in_array($code,['sales','service_cost','salary_expense','expense','fx'],true)) { $metrics['Net profit']-=$v; }
-            $t['amount']=Amounts::format($t['native'],$prec[$t['currency']]);
-            $t['report']=Amounts::format($v,$prec[$info['base']]);
+            $t['amount']=Amounts::display($t['native'],$prec[$t['currency']]);
+            $t['report']=Amounts::display($v,$prec[$info['base']]);
         } unset($t);
         $metrics['Gross profit']=$metrics['Sales']-$metrics['Supplier costs'];
         $metrics['Cash after obligations']=$metrics['Cash']-$metrics['Supplier payables']-$metrics['Other obligations'];
+        $dual=[];
         if ($section==='dashboard') {
-            $month=array_column($this->rows("SELECT account,SUM(base_minor) AS base FROM ledger WHERE branch_id=? AND day BETWEEN ? AND ?
-                AND account IN ('sales','service_cost') GROUP BY account",[$branch,date('Y-m-01'),date('Y-m-d')]),'base','account');
-            $metrics['Sales this month']=-(int)($month['sales'] ?? 0);
-            $metrics['Gross profit this month']=$metrics['Sales this month']-(int)($month['service_cost'] ?? 0);
+            $month=$this->rows("SELECT account,currency,SUM(native_minor) AS native,SUM(base_minor) AS base FROM ledger WHERE branch_id=? AND day BETWEEN ? AND ?
+                AND account IN ('sales','service_cost') GROUP BY account,currency",[$branch,date('Y-m-01'),date('Y-m-d')]);
+            $metrics['Sales this month']=-array_sum(array_column(array_filter($month,fn($r)=>$r['account']==='sales'),'base'));
+            $metrics['Gross profit this month']=$metrics['Sales this month']-array_sum(array_column(array_filter($month,fn($r)=>$r['account']==='service_cost'),'base'));
+            // Each card also lists the real amount held or earned in every currency the branch uses.
+            $used=array_values(array_unique([$info['base'],...array_column($cash,'currency'),...array_column($parties,'currency')]));
+            foreach (['Cash','Receivables','Supplier payables','Sales this month'] as $label) { $dual[$label]=array_fill_keys($used,0); }
+            foreach ($totals as $t) {
+                $n=(int)$t['native'];
+                match(explode(':',$t['account'])[0]) {
+                    'cash'=>$dual['Cash'][$t['currency']]=($dual['Cash'][$t['currency']] ?? 0)+$n,
+                    'customer'=>$dual['Receivables'][$t['currency']]=($dual['Receivables'][$t['currency']] ?? 0)+max(0,$n),
+                    'supplier'=>$dual['Supplier payables'][$t['currency']]=($dual['Supplier payables'][$t['currency']] ?? 0)+max(0,-$n),
+                    default=>null
+                };
+            }
+            foreach ($month as $r) { if ($r['account']==='sales') { $dual['Sales this month'][$r['currency']]=($dual['Sales this month'][$r['currency']] ?? 0)-(int)$r['native']; } }
+            foreach ($dual as &$byCurrency) { foreach ($byCurrency as $c=>&$v) { $v=Amounts::display($v,$prec[$c]); } unset($v); } unset($byCurrency);
         }
-        foreach ($metrics as &$v) { $v=Amounts::format($v,$prec[$info['base']]); } unset($v);
+        foreach ($metrics as &$v) { $v=Amounts::display($v,$prec[$info['base']]); } unset($v);
         $doc=$query->getInt('doc') ? ($this->rows('SELECT d.*,EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) AS voided,u.name AS staff,n.label,cp.address,cp.contact,cp.registration FROM documents d JOIN users u ON u.id=d.user_id LEFT JOIN document_numbers n ON n.document_id=d.id JOIN branches b ON b.id=d.branch_id LEFT JOIN company_profiles cp ON cp.company_id=b.company_id WHERE d.branch_id=? AND d.id=?',[$branch,$query->getInt('doc')])[0] ?? null) : null;
         $aging=$this->rows('SELECT * FROM open_items WHERE branch_id=? AND outstanding_minor<>0 ORDER BY due,id',[$branch]);
-        foreach ($aging as &$item) { $item['amount']=Amounts::format($item['outstanding_minor'],$prec[$item['currency']]); } unset($item);
+        foreach ($aging as &$item) { $item['amount']=Amounts::display($item['outstanding_minor'],$prec[$item['currency']]); } unset($item);
         $schedule=$this->rows("SELECT s.*,p.name,p.currency FROM schedules s JOIN documents d ON d.id=s.document_id JOIN entries e ON e.document_id=d.id
             JOIN parties p ON e.account='creditor:'||p.id WHERE d.branch_id=? AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY s.due",[$branch]);
         // Repayments settle installments in due order; only installments not yet covered stay on the list.
@@ -624,11 +653,11 @@ final class OfficeController extends AbstractController
         foreach ($schedule as $i=>&$item) {
             $planned[$item['document_id']]=($planned[$item['document_id']] ?? 0)+$item['amount_minor'];
             if ($planned[$item['document_id']]<=($paid[$item['document_id']] ?? 0)) { unset($schedule[$i]); continue; }
-            $item['amount']=Amounts::format($item['amount_minor'],$prec[$item['currency']]);
+            $item['amount']=Amounts::display($item['amount_minor'],$prec[$item['currency']]);
         } unset($item);
         $matches=$info['role']==='admin' ? $this->rows('SELECT id,debit_doc,credit_doc,account FROM matches WHERE branch_id=? ORDER BY id DESC',[$branch]) : [];
         $recentSales=$section==='dashboard' ? $this->rows("SELECT d.id,d.day,d.reference,
-            MAX(p.name) AS customer,
+            MAX(p.name) AS customer,d.details,
             -SUM(CASE WHEN e.account='sales' THEN e.base_minor ELSE 0 END) AS revenue,
             SUM(CASE WHEN e.account='service_cost' THEN e.base_minor ELSE 0 END) AS cost,
             EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) AS reversed
@@ -637,8 +666,11 @@ final class OfficeController extends AbstractController
             WHERE d.branch_id=? AND d.kind IN ('sale','reissue','refund')
             GROUP BY d.id ORDER BY d.id DESC LIMIT 10",[$branch]) : [];
         foreach ($recentSales as &$sale) {
-            $sale['margin']=Amounts::format($sale['revenue']-$sale['cost'],$prec[$info['base']]);
-            $sale['total']=Amounts::format($sale['revenue'],$prec[$info['base']]);
+            $sale['margin']=Amounts::display($sale['revenue']-$sale['cost'],$prec[$info['base']]);
+            $sale['total']=Amounts::display($sale['revenue'],$prec[$info['base']]);
+            $meta=json_decode($sale['details'],true) ?: [];
+            try { $sale['price']=Amounts::display(Amounts::parse((string)($meta['amount'] ?? ''),$prec[$meta['source'] ?? $info['base']] ?? 2),$prec[$meta['source'] ?? $info['base']] ?? 2).' '.($meta['source'] ?? ''); }
+            catch (DomainException) { $sale['price']=trim(($meta['amount'] ?? '').' '.($meta['source'] ?? '')); }
         } unset($sale);
         $pending=$section==='dashboard' && $info['role']!=='viewer' ? $this->rows("SELECT r.*,u.name FROM requests r JOIN users u ON u.id=r.requested_by
             WHERE r.branch_id=? AND r.state='pending' AND (r.requested_by=? OR CAST(? AS INTEGER)=1) ORDER BY r.id",[$branch,$u['id'],$u['is_admin']]) : [];
@@ -654,10 +686,10 @@ final class OfficeController extends AbstractController
         }
         if ($doc) { $doc['details']=json_decode($doc['details'],true); }
         foreach ($preview ?? [] as $i=>$e) {
-            $preview[$i]['native']=Amounts::format($e['native'],$prec[$e['currency']]);
-            $preview[$i]['base']=Amounts::format($e['base'],$prec[$info['base']]);
+            $preview[$i]['native']=Amounts::display($e['native'],$prec[$e['currency']]);
+            $preview[$i]['base']=Amounts::display($e['base'],$prec[$info['base']]);
         }
-        return $this->render('office.html.twig',compact('section','info','branch','metrics','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','recs','pending','checks','matches')+[
+        return $this->render('office.html.twig',compact('section','info','branch','metrics','dual','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','recs','pending','checks','matches')+[
             'recentSales'=>$recentSales,'adminTypes'=>Books::ADMIN_TYPES,'truncated'=>$truncated,'expenseCategories'=>Books::EXPENSE_CATEGORIES,
             'recentDocs'=>$section==='post' ? $this->rows('SELECT id,reference,day FROM documents d WHERE branch_id=? AND reversal_of IS NULL AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY id DESC LIMIT 100',[$branch]) : [],
             'types'=>Books::TYPES,'key'=>(string)Uuid::v4(),'today'=>date('Y-m-d'),

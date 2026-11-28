@@ -577,5 +577,20 @@
   "Showing the latest 500 lines. Use the filters above, or download the CSV for every line.": "يتم عرض آخر 500 سطر. استخدم عوامل التصفية أعلاه، أو نزّل ملف CSV لجميع الأسطر.",
   "Discard": "تجاهل",
   "Unfinished entry discarded.": "تم تجاهل الإدخال غير المكتمل.",
-  "Choose an open invoice for this account.": "اختر فاتورة مفتوحة لهذا الحساب."
+  "Choose an open invoice for this account.": "اختر فاتورة مفتوحة لهذا الحساب.",
+  "Total in": "الإجمالي بعملة",
+  "Each currency column shows the real amounts in that currency. The total converts everything at the rates used when each entry was posted.": "يعرض كل عمود المبالغ الفعلية بعملته. ويحوّل الإجمالي كل المبالغ بأسعار الصرف المستخدمة عند تسجيل كل قيد.",
+  "Exchange rate": "سعر الصرف",
+  "units per 1": "وحدة مقابل 1",
+  "Enter the agreed rate when the bank or safe and the account use different currencies. Leave blank to use the saved rate.": "أدخل السعر المتفق عليه عندما تختلف عملة البنك أو الخزنة عن عملة الحساب. اتركه فارغًا لاستخدام السعر المحفوظ.",
+  "Only needed between accounts in different currencies.": "مطلوب فقط بين حسابين بعملتين مختلفتين.",
+  "Enter the agreed rate when the price, the client account or the supplier account use different currencies. Leave blank to use the saved rate.": "أدخل السعر المتفق عليه عندما تختلف عملة السعر أو حساب العميل أو حساب المورد. اتركه فارغًا لاستخدام السعر المحفوظ.",
+  "Check amounts before saving": "راجع المبالغ قبل الحفظ",
+  "Enter a positive exchange rate up to one million, for an operation that involves a foreign currency.": "أدخل سعر صرف موجبًا لا يتجاوز مليونًا، لعملية تتضمن عملة أجنبية.",
+  "Change this entry": "تعديل هذا القيد",
+  "Edit entry": "تعديل القيد",
+  "Void (delete) entry": "إلغاء (حذف) القيد",
+  "Edit": "تعديل",
+  "Void": "إلغاء",
+  "Editing or voiding keeps the original and posts a reversing entry, so the history stays auditable.": "التعديل أو الإلغاء يحتفظ بالقيد الأصلي ويسجل قيدًا عكسيًا، فيبقى السجل قابلًا للتدقيق."
 }
