@@ -1,6 +1,6 @@
 {% extends 'layout.html.twig' %}
 {% set title=('Management reports'|ui)~' · '~info.name %}
-{% block content %}<nav><a href="{{ path('office',{branch:branch,section:'dashboard'}) }}">{{ 'Branch dashboard'|ui }}</a><a href="{{ path('office',{branch:branch,section:'report'}) }}">{{ 'General ledger'|ui }}</a></nav>
+{% block content %}<nav><a href="{{ path('office',{branch:branch,section:'dashboard'}) }}">{{ 'Branch dashboard'|ui }}</a><a href="{{ path('office',{branch:branch,section:'ledger'}) }}">{{ 'General ledger'|ui }}</a></nav>
 <p class="screen-context">{{ info.company }} · <bdi>{{ info.base }}</bdi> · {{ from }} {{ 'to'|ui }} {{ to }}</p>
 <form class="grid"><label>{{ 'From'|ui }}<input name="from" type="date" value="{{ from }}"></label><label>{{ 'Through'|ui }}<input name="to" type="date" value="{{ to }}"></label><label>{{ 'Profitability by'|ui }}<select name="group">{% for g in ['service','airline','employee','customer','supplier'] %}<option value="{{ g }}" {{ report.group==g?'selected' }}>{{ (g)|ui }}</option>{% endfor %}</select></label><button>{{ 'Run report'|ui }}</button></form>
 <button onclick="window.print()">{{ 'Print / save PDF'|ui }}</button>

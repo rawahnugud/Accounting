@@ -120,12 +120,8 @@ final class StaffTreasuryController extends AbstractController
     {
         $assignments=$this->assignments();
         if ($assignments) {
-            // Prefer the existing Sudan workspace when upgrading an installation with legacy branches.
-            $workspace=$assignments[0];
-            foreach ($assignments as $item) {
-                if (strcasecmp(trim($item['name']),'Sudan')===0) { $workspace=$item; break; }
-            }
-            return $this->redirectToRoute('office',['branch'=>$workspace['id'],'section'=>'dashboard']);
+            // The short /dashboard address opens the user's main branch (Sudan when present).
+            return $this->redirectToRoute('office',['section'=>'dashboard']);
         }
         return $this->render('branches.html.twig',['branches'=>[]]);
     }

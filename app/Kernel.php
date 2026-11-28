@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App;
 
 use App\Http\Controllers\StaffTreasuryController as Staff;
+use App\Accounting\Books;
 use App\Http\Controllers\OfficeController;
 use App\Security\StaffProvider;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
@@ -29,7 +30,7 @@ final class Kernel extends BaseKernel
     public function getCacheDir(): string
     {
         return ($_SERVER['LARAVEL_STORAGE_PATH'] ?? $this->getProjectDir().'/storage')
-            .'/framework/cache/symfony/roles-v1/'.$this->environment;
+            .'/framework/cache/symfony/short-urls-v1/'.$this->environment;
     }
 
     protected function configureContainer(ContainerConfigurator $container): void
@@ -79,11 +80,19 @@ final class Kernel extends BaseKernel
 
     protected function configureRoutes(RoutingConfigurator $routes): void
     {
-        $routes->add('match_items','/branches/{branch}/matches')->controller([OfficeController::class,'matchItems'])
+        // Short single-branch paths; ?branch=N only appears for a branch other than the user's main one.
+        $routes->add('match_items','/matches')->controller([OfficeController::class,'matchItems'])->defaults(['branch'=>0])->methods(['POST']);
+        $routes->add('match_items_old','/branches/{branch}/matches')->controller([OfficeController::class,'matchItems'])
             ->requirements(['branch'=>'\d+'])->methods(['POST']);
         $routes->add('overview','/overview')->controller([OfficeController::class,'overview'])->methods(['GET']);
-        $routes->add('control','/control')->controller([OfficeController::class,'control'])->methods(['GET','POST']);
-        $routes->add('office','/branches/{branch}/office/{section}')->controller([OfficeController::class,'office'])
+        $routes->add('control','/settings')->controller([OfficeController::class,'control'])->methods(['GET','POST']);
+        $routes->add('office','/{section}/{doc}')->controller([OfficeController::class,'office'])->defaults(['branch'=>0,'doc'=>''])
+            ->requirements(['section'=>'dashboard|new|edit|d|ledger|statement|reports|export|workbook','doc'=>'\d*'])->methods(['GET','POST']);
+        $routes->add('task','/{task}')->controller([OfficeController::class,'office'])->defaults(['branch'=>0,'section'=>'new'])
+            ->requirements(['task'=>implode('|',array_map(static fn($k)=>str_replace('_','-',$k),array_keys(Books::TYPES)))])->methods(['GET','POST']);
+        // Old long addresses keep working for bookmarks.
+        $routes->add('control_old','/control')->controller([OfficeController::class,'legacy'])->methods(['GET']);
+        $routes->add('office_old','/branches/{branch}/office/{section}')->controller([OfficeController::class,'legacy'])
             ->requirements(['branch'=>'\d+','section'=>'dashboard|post|report|export|workbook|statements'])->methods(['GET','POST']);
         $routes->add('login', '/login')->controller([Staff::class, 'login'])->methods(['GET', 'POST']);
         $routes->add('forgot_password', '/forgot-password')->controller([Staff::class, 'forgotPassword'])->methods(['GET', 'POST']);
