@@ -151,7 +151,7 @@ with tempfile.TemporaryDirectory() as temp:
         assert "Test sale" in call("/new",{**data,"mode":"edit"})
         assert conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]==0
         data["mode"]="confirm"
-        assert "Document D-1" in call("/new",data)
+        assert "Service sale D-1" in call("/new",data)
         call("/new",data)
         assert conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]==1
         assert "15.25" in call("/dashboard")
@@ -259,6 +259,7 @@ with tempfile.TemporaryDirectory() as temp:
         client=signed_in
         assert "doc-back" not in call("/d/1?back=//evil.example") and "← Back" in call("/d/1?back=/dashboard")
         assert "Delete this entry?" in call("/d/1") and ">Edit</a>" in call("/ledger")
+        assert "Accounting details" in call("/d/1") and "Net debit" not in call("/d/1") and "Journal entries" not in call("/d/1")
         assert "Due date" not in call("/transfer") and "Due date" not in call("/sale")
         print("PASS allocations, cancellations, management report, recovered sale, registrations, workbook and document numbering")
         ar = call("/dashboard?lang=ar")

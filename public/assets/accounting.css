@@ -495,3 +495,19 @@ main nav.tabs a[aria-current]{background:var(--wine);color:#fff;box-shadow:0 1px
 .report-options label{display:inline-flex;align-items:center;gap:.3rem;margin:0;font-weight:400}
 .report-options input{width:auto;min-height:0}
 @media print{.view-currency,.report-options{display:none!important}}
+/* Document page v2: plain header, export menu, accounting details folded away, company lines only on paper. */
+@media screen{.print-only{display:none!important}}
+.doc-head p{margin:0;color:var(--muted)}
+.doc-head .role{background:#e7f6ec;color:#1f7a3d}.doc-head .role.deleted{background:var(--soft);color:var(--wine)}
+.doc-card .doc-details{margin-bottom:1.25rem}.doc-card .sale-summary{gap:1rem 2.5rem}
+.doc-toolbar a.button.secondary,.doc-menu>summary{background:transparent;color:var(--ink);border:1px solid rgba(18,20,27,.2)}
+.doc-toolbar a.button.secondary:hover,.doc-menu>summary:hover{background:rgba(18,20,27,.05);color:var(--ink)}
+.doc-toolbar .doc-delete{color:var(--wine)}
+.doc-menu{position:relative;margin:0;overflow:visible;background:none;box-shadow:none}
+.doc-menu>summary{min-height:2.5rem;padding:.5rem 1.15rem;border-radius:var(--radius-sm);font-size:.9rem;font-weight:500}
+.doc-menu[open]>summary{border-bottom:1px solid rgba(18,20,27,.2)}
+.doc-menu>summary::before,html[dir=rtl] .doc-menu>summary::before{transform:rotate(45deg)}.doc-menu[open]>summary::before{transform:rotate(-135deg)}
+.doc-menu>div{position:absolute;inset-inline-end:0;top:calc(100% + .35rem);z-index:5;display:grid;min-width:11rem;margin:0!important;padding:.35rem;background:var(--paper);border-radius:var(--radius-sm);box-shadow:var(--shadow-lg)}
+.doc-menu>div a{padding:.5rem .75rem;border-radius:var(--radius-sm);color:var(--ink);text-decoration:none}
+.doc-menu>div a:hover{background:var(--soft);color:var(--wine)}
+.doc-accounting td:nth-child(n+2),.doc-accounting th:nth-child(n+2){text-align:end}

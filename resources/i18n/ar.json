@@ -653,5 +653,9 @@
   "Currency exposure": "مركز العملات",
   "Show": "عرض",
   "Each currency column shows the real amounts in that currency. In the total, amounts already in this currency stay as they are and the rest convert at the rate on the end date.": "يعرض كل عمود عملة المبالغ الفعلية بتلك العملة. في الإجمالي تبقى المبالغ المسجلة بهذه العملة كما هي، وتُحوَّل البقية بسعر الصرف في تاريخ النهاية.",
-  "Profit, profitability and cash movements include only documents for the chosen account. The balance sheet, aging and exposure cover the whole branch.": "تشمل الأرباح والربحية والحركات النقدية مستندات الحساب المختار فقط. أما الميزانية والأعمار ومركز العملات فتغطي الفرع بالكامل."
+  "Profit, profitability and cash movements include only documents for the chosen account. The balance sheet, aging and exposure cover the whole branch.": "تشمل الأرباح والربحية والحركات النقدية مستندات الحساب المختار فقط. أما الميزانية والأعمار ومركز العملات فتغطي الفرع بالكامل.",
+  "Export": "تصدير",
+  "Saved": "محفوظ",
+  "Profit": "الربح",
+  "Accounting details": "التفاصيل المحاسبية"
 }
