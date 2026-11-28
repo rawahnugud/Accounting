@@ -328,3 +328,33 @@ main>ul>li{padding:1rem 1.25rem;background:var(--paper);border-radius:var(--radi
 a.button{display:inline-flex;align-items:center;min-height:2.5rem;padding:.5rem 1.15rem;border:1px solid var(--wine);border-radius:var(--radius-sm);background:var(--wine);color:#fff;font-size:.9rem;font-weight:500;text-decoration:none}
 a.button:hover{background:var(--deep);border-color:var(--deep);color:#fff}
 .metrics .card strong.dual-amount{font-size:clamp(1.05rem,1.6vw,1.3rem);white-space:nowrap;overflow-wrap:normal}
+/* Theme toggle and light sidebar option (remembered per browser). */
+.theme-toggle{display:inline-grid;place-items:center;width:2.4rem;height:2.4rem;min-height:0;padding:0;margin-inline-start:auto;border:0;border-radius:var(--radius);background:var(--thead);color:var(--muted);box-shadow:none;cursor:pointer}
+.theme-toggle::before{content:"";width:1.15rem;height:1.15rem;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/%3E%3C/svg%3E") center/contain no-repeat}
+.theme-toggle:hover{background:var(--soft);color:var(--wine)}
+.theme-toggle~.language{margin-inline-start:0}
+html[data-theme=light] .theme-toggle::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z'/%3E%3C/svg%3E")}
+html[data-theme=light] .sidebar{background:var(--paper);box-shadow:1px 0 0 var(--line),0 2px 4px rgba(15,34,58,.06)}
+html[data-theme=light] .brand{border-color:var(--line)}
+html[data-theme=light] .brand img{background:none;padding:0;width:186px;height:auto;filter:none}
+html[data-theme=light] .brand span{color:var(--muted)}
+html[data-theme=light] .brand span::before,html[data-theme=light] .brand span::after{background:var(--rose-2)}
+html[data-theme=light] .desktop-nav .primary::before{color:var(--muted)}
+html[data-theme=light] .primary a{color:var(--body)}
+html[data-theme=light] .primary a:hover{color:var(--wine);background:var(--rose)}
+html[data-theme=light] .primary a[aria-current]{color:var(--wine);background:var(--soft)}
+html[data-theme=light] .primary a[aria-current]::before,html[data-theme=light] .primary a[aria-current]::after{background:var(--wine)}
+html[data-theme=light] .logout{border-color:var(--line)}
+html[data-theme=light] .logout button{background:var(--rose);color:var(--wine)}
+html[data-theme=light] .logout button:hover{background:var(--rose-2);color:var(--deep)}
+@media(max-width:860px){
+  .theme-toggle{width:2.2rem;height:2.2rem}
+  html[data-theme=light] .brand img{width:132px}
+  html[data-theme=light] .sidebar{box-shadow:0 1px 0 var(--line)}
+  html[data-theme=light] .mobile-nav{background:var(--rose)}
+  html[data-theme=light] .mobile-nav>summary{color:var(--wine)}
+  html[data-theme=light] .mobile-nav>summary::before{border-color:var(--wine)}
+  html[data-theme=light] .mobile-nav[open]{background:var(--paper);border:1px solid var(--line)}
+  html[data-theme=light] .mobile-nav[open]>summary,html[data-theme=light] .mobile-nav .branch-nav{border-color:var(--line)}
+}
+@media print{.theme-toggle{display:none!important}}
