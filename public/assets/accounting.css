@@ -299,7 +299,7 @@ main>ul>li{padding:1rem 1.25rem;background:var(--paper);border-radius:var(--radi
 @media(max-width:380px){.metrics{grid-template-columns:1fr}}
 
 @media print{
-  @page{size:A4;margin:15mm}
+  @page{size:A4}
   :root,body{background:#fff;color:#000}
   .sidebar,.topbar,.language,.mobile-nav,.skip,nav,form,button,.actions,summary,.no-print,
   .daily,.register-links,.task-links,.setup-note,.unfinished,.internal-check,.statement-tools,.screen-context,
@@ -318,23 +318,39 @@ main>ul>li{padding:1rem 1.25rem;background:var(--paper);border-radius:var(--radi
   .statement-paper h2,.document-brand,.statement-meta,.statement-figures{break-after:avoid}
   .statement-table td,.statement-table th{padding:5pt}
   .statement-paper .grid{display:block;columns:2}.statement-paper .grid p{break-inside:avoid}
-  .statement-paper h2{color:#40162a}
-  /* Branded, easy-to-read printouts */
+  /* Branded A4 printouts: maroon header band and table headings, emphasised totals.
+     Defining every page margin box replaces the browser's own date/title/URL header and footer in Chrome and Edge. */
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  @page{@bottom-center{content:counter(page) " / " counter(pages);font:8pt Inter,Arial,sans-serif;color:#777}}
-  .staff main:not(:has(.document-brand))::before{content:"";display:block;height:12mm;margin-bottom:5mm;padding-bottom:3mm;border-bottom:2px solid var(--wine);background:url(midnight-travel.png) left top/auto 11mm no-repeat}
-  html[dir=rtl] .staff main:not(:has(.document-brand))::before{background-position:right top}
-  .staff .page-heading h1,.statement-paper>h2:first-of-type{color:#40162a}
-  main h2{color:#40162a;break-after:avoid}
+  :root{--thead:#fbf3f7}
+  @page{margin:14mm 14mm 16mm;
+    @top-left{content:""}@top-center{content:""}@top-right{content:""}@bottom-left{content:""}@bottom-right{content:""}
+    @bottom-center{content:counter(page) " / " counter(pages);font:8pt Inter,Arial,sans-serif;color:#85144b}}
   a{color:inherit;text-decoration:none}
+  .document-brand{background:#85144b;color:#fff;padding:5mm 6mm;margin-bottom:6mm;border:0;border-radius:2mm;break-inside:avoid}
+  .document-brand img{content:url(midnight-travel-light.png);width:46mm}
+  .document-brand>div{color:#fff;font-size:9pt;line-height:1.55}
+  .document-brand strong{display:block;font-size:12.5pt;color:#fff}
+  .staff main:not(:has(.document-brand))::before{content:"";display:block;height:16mm;margin-bottom:6mm;border-radius:2mm;background:#85144b url(midnight-travel-light.png) 6mm center/auto 10mm no-repeat}
+  html[dir=rtl] .staff main:not(:has(.document-brand))::before{background-position:calc(100% - 6mm) center}
+  .staff .page-heading h1,.statement-paper>h2:first-of-type{color:#85144b;font-size:20pt;font-weight:700;margin:0 0 3mm;border:0;padding:0}
+  main h2{color:#85144b;font-size:12pt;padding-bottom:1.5mm;border-bottom:.75pt solid #ead2de;break-after:avoid}
+  .statement-meta{margin:0 0 5mm;padding-bottom:4mm;border-bottom:.75pt solid #ead2de}
+  .statement-paper small{font-size:7.5pt;color:#7a6a72}
+  html:not([dir=rtl]) :is(.statement-meta,.statement-figures) small{text-transform:uppercase;letter-spacing:.06em}
+  .statement-figures,.sale-summary{background:#fbf3f7;border:.75pt solid #ead2de;border-inline-start:3pt solid #85144b;border-radius:2mm;padding:4mm 5mm;box-shadow:none}
+  .statement-figures>div:last-child{text-align:end}
+  .statement-figures>div:last-child strong{color:#85144b;font-size:15pt}
   .context{color:#555}.context span,.role{background:none;padding:0;color:inherit}
-  .sale-summary{box-shadow:none;border:1px solid #ddd;border-inline-start:3px solid var(--wine);border-radius:0}
-  table{border:1px solid #ddd}
-  thead th,table:not(.report-values) tr:first-child>th{background:#f6eef2;color:#40162a;border-bottom:1.5px solid #c9a3b5}
-  table:not(.report-values) tbody tr:nth-child(even)>*{background:#fafafa}
+  table{border:.75pt solid #e2d4db;border-collapse:collapse}
+  td{border-bottom:.5pt solid #eee4e9}
+  thead th,table:not(.report-values) tr:first-child>th,table.dual-values thead th{background:#85144b;color:#fff;font-size:8pt;font-weight:600;border:0}
+  table.dual-values thead th:last-child{background:#6a1039}
+  html:not([dir=rtl]) :is(thead th,table:not(.report-values) tr:first-child>th){text-transform:uppercase;letter-spacing:.05em}
+  table:not(.report-values) tbody tr:nth-child(even)>*{background:#fbf7f9}
   tr:hover>td,tbody tr:hover td{background:inherit}
-  tbody tr:last-child>td{border-bottom:0}
-  .document-brand img{width:42mm}
+  .statement-table .closing>*,table.report-values tr.closing>*{background:#f3e3eb;color:#85144b;font-weight:700;border-top:1.5pt solid #85144b}
+  .balance-note{margin:4mm 0;padding:3mm 5mm;background:#85144b;color:#fff;border-radius:2mm;font-size:11pt;text-align:end;break-inside:avoid}
+  .statement-paper footer{margin-top:8mm;padding-top:2.5mm;border-top:.75pt solid #85144b;font-size:8pt;color:#6b5a62}
 }
 /* Dual-currency report tables: one column per currency, then the reporting-currency total. */
 .dual-values thead th{color:var(--muted);font-size:.75rem;font-weight:600;letter-spacing:.04em;text-align:end;border-bottom:1px solid var(--line)}
