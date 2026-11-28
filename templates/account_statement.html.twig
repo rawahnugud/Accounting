@@ -48,7 +48,7 @@
 <div class="actions"><button type="button" onclick="window.print()">{{ 'Print / save PDF'|ui }}</button>
 <a href="{{ path('office',{branch:branch,section:'statement',account:selected,from:from,to:to,download:'csv'}) }}">{{ 'Download CSV'|ui }}</a>
 {% set party=selected|split(':') %}
-{% if info.role!='viewer' and party[0] in ['customer','supplier'] %}<a class="button" href="{{ path('task',{branch:branch,task:party[0]=='customer'?'receipt':'supplier-payment',(party[0]):party[1],back:here}) }}">{{ (party[0]=='customer'?'Record receipt':'Pay supplier')|ui }}</a>{% endif %}
+{% if info.role!='viewer' and party[0] in ['customer','supplier'] %}<a class="button" href="{{ path('task',{branch:branch,task:party[0]=='customer'?'receipt':'supplier-payment',(party[0]):party[1],back:here}) }}">{{ (party[0]=='customer'?'Record receipt':'Pay supplier')|ui }}</a>{% endif %}{% if info.role!='viewer' and party[0] in ['customer','supplier','creditor','employee'] %} <a class="button secondary" href="{{ path('task',{branch:branch,task:'balance-transfer',from:party[0]~':'~party[1],back:here}) }}">{{ 'Move balance'|ui }}</a>{% endif %}
 {% if statement.lines|length>1 %}<label class="statement-find">{{ 'Find in this statement'|ui }}<input type="search" id="line-search" autocomplete="off" placeholder="{{ 'PNR, ticket, reference or amount'|ui }}"></label>{% endif %}
 </div>
 <article class="statement-paper">

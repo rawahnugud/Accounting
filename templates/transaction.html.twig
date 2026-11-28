@@ -1,5 +1,5 @@
 {% if not chosen %}
-{% set everyday=['sale','receipt','supplier_payment','transfer'] %}
+{% set everyday=['sale','receipt','supplier_payment','transfer','balance_transfer'] %}
 <div class="task-links daily">{% for code in everyday %}<a href="{{ path('task',{branch:branch,task:code|replace({'_':'-'})}) }}">{{ tasks[code]|ui }}</a>{% endfor %}</div>
 {% for group,items in groups %}
 {% set extra=items|filter((label,code)=>code not in everyday and info.role!='viewer') %}

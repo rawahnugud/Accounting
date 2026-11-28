@@ -340,6 +340,8 @@ final class OfficeController extends AbstractController
         // A statement's Record receipt or Pay supplier link opens the form with that account chosen, and Cancel returns to the statement.
         if ($section==='post' && $r->isMethod('GET') && !$f) {
             foreach (['customer','supplier'] as $k) { if ($r->query->getInt($k)) { $f[$k]=(string)$r->query->getInt($k); } }
+            $from=(string)$r->query->get('from','');
+            if (preg_match('/^(customer|supplier|creditor|employee):\d+$/D',$from)) { $f['from']=$from; }
             if ($back!=='') { $f['back']=$back; }
         }
         if ($r->isMethod('POST')) {
