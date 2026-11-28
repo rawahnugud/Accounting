@@ -28,7 +28,7 @@ final class Kernel extends BaseKernel
     public function getCacheDir(): string
     {
         return ($_SERVER['LARAVEL_STORAGE_PATH'] ?? $this->getProjectDir().'/storage')
-            .'/framework/cache/symfony/workflows-v1/'.$this->environment;
+            .'/framework/cache/symfony/qa-v1/'.$this->environment;
     }
 
     protected function configureContainer(ContainerConfigurator $container): void
@@ -47,7 +47,8 @@ final class Kernel extends BaseKernel
                 'cookie_httponly' => true,
             ],
         ]);
-        $container->extension('twig', ['default_path' => '%kernel.project_dir%/templates']);
+        // Recompile a template when its file changes, so a git pull shows new screens without clearing the cache.
+        $container->extension('twig', ['default_path' => '%kernel.project_dir%/templates', 'auto_reload' => true]);
         $container->extension('security', [
             'password_hashers' => [\Symfony\Component\Security\Core\User\InMemoryUser::class => 'auto'],
             'providers' => ['staff' => ['id' => StaffProvider::class]],

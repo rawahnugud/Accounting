@@ -251,6 +251,10 @@ final class OfficeController extends AbstractController
             $date=Books::date($this->field($f,'day'));
             if ($date>date('Y-m-d')) { throw new DomainException('Choose today or an earlier date.'); }
             $run('INSERT INTO periods VALUES (?,?) ON CONFLICT(branch_id) DO UPDATE SET closed_through=excluded.closed_through WHERE excluded.closed_through>periods.closed_through',[$branch,$date]); break;
+        case 'revalue':
+            $ids=(new Books($this->db,$branch,$actor))->revalue($this->field($f,'day'));
+            if (!$ids) { throw new DomainException('Foreign balances already match the rate on this date.'); }
+            $f['documents']='D-'.implode(', D-',$ids); break;
         case 'reconcile':
             $cash=$this->rows('SELECT a.*,c.decimals FROM cash_accounts a JOIN currencies c ON c.code=a.currency WHERE a.id=?',[$f['cash']])[0] ?? throw new DomainException('Choose an account.');
             $date=Books::date($this->field($f,'day'));
@@ -542,8 +546,10 @@ final class OfficeController extends AbstractController
         }
         if (($term=trim($query->get('search','')))!=='') {
             // Details are saved with json_encode defaults, so Arabic and "/" are escaped (\u0623, \/).
-            $where[]="(instr(lower(reference),lower(?))>0 OR number IN (SELECT 'D-'||id FROM documents WHERE branch_id=? AND (instr(lower(details),lower(?))>0 OR instr(lower(details),lower(?))>0)))";
-            array_push($args,$term,$branch,$term,substr(json_encode($term),1,-1));
+            // Printed numbers (for example MT-000123) live in document_numbers.
+            $where[]="(instr(lower(reference),lower(?))>0 OR number IN (SELECT 'D-'||id FROM documents WHERE branch_id=? AND (instr(lower(details),lower(?))>0 OR instr(lower(details),lower(?))>0))
+                OR number IN (SELECT 'D-'||n.document_id FROM document_numbers n WHERE instr(lower(n.label),lower(?))>0))";
+            array_push($args,$term,$branch,$term,substr(json_encode($term),1,-1),$term);
         }
         $condition=implode(' AND ',$where);
         $totals=$this->rows("SELECT account,currency,SUM(native_minor) AS native,SUM(base_minor) AS base FROM ledger WHERE $condition GROUP BY account,currency ORDER BY account",$args);

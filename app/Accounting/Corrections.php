@@ -19,7 +19,7 @@ final class Corrections
     private function original(int $id): array
     {
         $row=$this->books->rows('SELECT d.* FROM documents d JOIN users u ON u.id=? AND u.is_admin=1
-            WHERE d.id=? AND d.branch_id=? AND d.reversal_of IS NULL AND d.kind NOT IN (\'allocation_fx\',\'reverse\')
+            WHERE d.id=? AND d.branch_id=? AND d.reversal_of IS NULL AND d.kind NOT IN (\'allocation_fx\',\'reverse\',\'revaluation\')
             AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id)',[$this->actor,$id,$this->branch]);
         return $row[0] ?? throw new DomainException('This document is unavailable for correction.');
     }
@@ -30,7 +30,7 @@ final class Corrections
         $meta=json_decode($doc['details'],true,512,JSON_THROW_ON_ERROR);
         $f=['kind'=>$doc['kind'],'day'=>$doc['day'],'due'=>$doc['due'],'reference'=>$doc['reference'],
             'related'=>$doc['related_id'],'amend'=>$id,'currency'=>$meta['source'] ?? '']+$meta;
-        if (!empty($meta['override_by'])) { $f['override']=$meta['source_rate'] ?? ''; }
+        if (!empty($meta['override_by'])) { $f['override']=$meta['override'] ?? $meta['source_rate'] ?? ''; }
         if ($doc['kind']==='payroll') { $f['amount']=$meta['salary'] ?? ''; }
         foreach ($this->books->rows('SELECT account,native_minor FROM entries WHERE document_id=? ORDER BY id',[$id]) as $line) {
             $parts=explode(':',$line['account'],2);

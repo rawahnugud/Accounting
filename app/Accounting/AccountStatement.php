@@ -21,7 +21,7 @@ final class AccountStatement
             MAX(CASE WHEN l.day>=:start THEN d.details END) AS details
             FROM ledger l LEFT JOIN documents d ON l.number='D-'||d.id AND d.branch_id=l.branch_id
             LEFT JOIN document_numbers n ON n.document_id=d.id
-            WHERE l.branch_id=:branch AND l.account=:account AND l.currency=:currency AND l.day<=:end
+            WHERE l.branch_id=:branch AND l.account=:account AND l.currency=:currency AND l.day<=:end AND l.native_minor<>0
             GROUP BY 1,2 ORDER BY 1,substr(document,1,1),CAST(substr(document,3) AS INTEGER)");
         $query->execute(['branch'=>$branch,'account'=>$account,'currency'=>$currency,'start'=>$from,'end'=>$to]);
         $opening=$debits=$credits=$balance=0;
