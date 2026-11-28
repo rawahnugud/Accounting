@@ -19,7 +19,7 @@ final class Corrections
     private function original(int $id): array
     {
         $row=$this->books->rows('SELECT d.* FROM documents d JOIN users u ON u.id=? AND u.is_admin=1
-            WHERE d.id=? AND d.branch_id=? AND d.reversal_of IS NULL AND d.kind NOT IN (\'allocation_fx\',\'reverse\')
+            WHERE d.id=? AND d.branch_id=? AND d.reversal_of IS NULL AND d.kind NOT IN (\'allocation_fx\',\'reverse\',\'revaluation\')
             AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id)',[$this->actor,$id,$this->branch]);
         return $row[0] ?? throw new DomainException('This document is unavailable for correction.');
     }

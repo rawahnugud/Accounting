@@ -251,6 +251,10 @@ final class OfficeController extends AbstractController
             $date=Books::date($this->field($f,'day'));
             if ($date>date('Y-m-d')) { throw new DomainException('Choose today or an earlier date.'); }
             $run('INSERT INTO periods VALUES (?,?) ON CONFLICT(branch_id) DO UPDATE SET closed_through=excluded.closed_through WHERE excluded.closed_through>periods.closed_through',[$branch,$date]); break;
+        case 'revalue':
+            $ids=(new Books($this->db,$branch,$actor))->revalue($this->field($f,'day'));
+            if (!$ids) { throw new DomainException('Foreign balances already match the rate on this date.'); }
+            $f['documents']='D-'.implode(', D-',$ids); break;
         case 'reconcile':
             $cash=$this->rows('SELECT a.*,c.decimals FROM cash_accounts a JOIN currencies c ON c.code=a.currency WHERE a.id=?',[$f['cash']])[0] ?? throw new DomainException('Choose an account.');
             $date=Books::date($this->field($f,'day'));

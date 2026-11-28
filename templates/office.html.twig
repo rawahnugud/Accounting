@@ -25,7 +25,7 @@
 {% elseif section=='post' %}
 {% include 'transaction.html.twig' %}
 {% else %}
-{% if doc %}{% if doc.voided %}<p>{{ 'Voided'|ui }}</p>{% elseif info.role=='admin' and not doc.reversal_of and doc.kind!='allocation_fx' %}
+{% if doc %}{% if doc.voided %}<p>{{ 'Voided'|ui }}</p>{% elseif info.role=='admin' and not doc.reversal_of and doc.kind not in ['allocation_fx','revaluation'] %}
 <details class="no-print"><summary>{{ 'Correct this document'|ui }}</summary>
 {% if doc.import_amount is defined %}
 <form method="post" action="{{ path('office',{branch:branch,section:'post'}) }}">{{ include('csrf.html.twig') }}<input type="hidden" name="amend" value="{{ doc.id }}">

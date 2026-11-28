@@ -130,3 +130,17 @@ same((int)$db->query("SELECT SUM(base_minor) FROM ledger WHERE account='advance:
 same((int)$db->query("SELECT base_minor FROM entries WHERE document_id=$recovery AND account='fx'")->fetchColumn(),2000);
 same((int)$db->query('SELECT COUNT(*) FROM (SELECT document_id FROM entries GROUP BY document_id HAVING SUM(base_minor)<>0)')->fetchColumn(),0);
 echo "PASS exchange-rate override on transfers and receipts, refunds keep ticket details, advances recovered at carrying value\n";
+$sdgCash=fn()=>$db->query("SELECT SUM(native_minor),SUM(base_minor) FROM ledger WHERE account='cash:2' AND day<='2027-01-31'")->fetch(PDO::FETCH_NUM);
+[$native]=$sdgCash();
+$restated=$book->revalue('2027-01-31');
+same(count($restated),2);
+same((int)$sdgCash()[1],intdiv((int)$native,5000));
+same((int)$db->query("SELECT SUM(base_minor) FROM ledger WHERE account LIKE 'customer:%' AND currency='SDG' AND day<='2027-01-31'")->fetchColumn(),
+    (int)round($db->query("SELECT SUM(native_minor) FROM ledger WHERE account LIKE 'customer:%' AND currency='SDG'")->fetchColumn()/5000));
+same((int)$db->query("SELECT COALESCE(SUM(base_minor),0) FROM entries WHERE document_id IN ($restated[0],$restated[1])")->fetchColumn(),0);
+same((int)$db->query("SELECT SUM(e.base_minor) FROM entries e WHERE e.document_id IN ($restated[0],$restated[1]) AND e.account<>'fx'")->fetchColumn(),0);
+same($book->revalue('2027-01-31'),[]);
+denied(fn()=>$post('reverse',['related'=>$restated[0],'day'=>'2027-02-02']));
+denied(fn()=>(new Books($db,1,2))->revalue('2027-01-31'));
+same((int)$db->query('SELECT COUNT(*) FROM (SELECT document_id FROM entries GROUP BY document_id HAVING SUM(base_minor)<>0)')->fetchColumn(),0);
+echo "PASS month-end revaluation restates foreign balances, reverses next day, repeats as a no-op and cannot be reversed\n";

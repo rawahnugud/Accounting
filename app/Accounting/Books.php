@@ -4,6 +4,7 @@ namespace App\Accounting;
 
 use PDO;
 use DomainException;
+use Symfony\Component\Uid\Uuid;
 
 final class Books
 {
@@ -53,6 +54,40 @@ final class Books
         if (!$scaled || $scaled>1000000000000) { throw new DomainException('Rate must be positive and at most one million.'); }
         $factor=10**(6+$rate['base_places']-$rate['places']);
         return $toBase ? Amounts::ratio($amount,$factor,$scaled) : Amounts::ratio($amount,$scaled,$factor);
+    }
+    /**
+     * Restate foreign-currency balances at the day's rate and post the difference to exchange differences.
+     * The adjustment reverses the next day, so later settlements still book FX against historical carrying values.
+     * Runs inside the caller's write transaction. Returns the new document ids, or none when nothing changes.
+     */
+    public function revalue(string $day): array
+    {
+        $day=self::date($day);
+        if (!$this->one('SELECT is_admin FROM users WHERE id=?',[$this->actor])['is_admin']) { throw new DomainException('Administrator access required.'); }
+        $closed=$this->rows('SELECT closed_through FROM periods WHERE branch_id=?',[$this->branch]);
+        if ($closed && $day<=$closed[0]['closed_through']) { throw new DomainException('This period is closed.'); }
+        $base=$this->one('SELECT c.reporting_currency AS base FROM branches b JOIN companies c ON c.id=b.company_id WHERE b.id=?',[$this->branch])['base'];
+        $this->overrides=[];
+        $lines=[]; $rates=[];
+        foreach ($this->rows("SELECT account,currency,SUM(native_minor) AS native,SUM(base_minor) AS base FROM ledger
+            WHERE branch_id=? AND day<=? AND instr(account,':')>0 AND currency<>? GROUP BY account,currency",[$this->branch,$day,$base]) as $r) {
+            $rate=$this->rate($r['currency'],$day);
+            $native=(int)$r['native'];
+            $target=$native ? ($native<0?-1:1)*$this->convert(abs($native),$rate,true) : 0;
+            if ($difference=$target-(int)$r['base']) { $lines[]=[$r['account'],$r['currency'],$difference,$rate['rate']]; $rates[$r['currency']]=$rate['rate']; }
+        }
+        if (!$lines) { return []; }
+        $lines[]=['fx',$base,-array_sum(array_column($lines,2)),'1'];
+        $ids=[];
+        foreach ([[$day,1,'Revaluation'],[(new \DateTimeImmutable($day))->modify('+1 day')->format('Y-m-d'),-1,'Revaluation reversal']] as [$date,$sign,$label]) {
+            $key=(string)Uuid::v4();
+            $this->db->prepare("INSERT INTO documents(branch_id,user_id,kind,day,due,reference,details,related_id,request_key,fingerprint) VALUES (?,?,'revaluation',?,?,?,?,?,?,?)")
+                ->execute([$this->branch,$this->actor,$date,$date,"$label $day",json_encode(['rates'=>$rates],JSON_THROW_ON_ERROR),$ids[0] ?? null,$key,hash('sha256',$key)]);
+            $ids[]=$id=(int)$this->db->lastInsertId();
+            $insert=$this->db->prepare('INSERT INTO entries(document_id,account,currency,native_minor,base_minor,rate) VALUES (?,?,?,?,?,?)');
+            foreach ($lines as [$account,$currency,$amount,$rate]) { $insert->execute([$id,$account,$currency,$account==='fx'?$sign*$amount:0,$sign*$amount,$rate]); }
+        }
+        return $ids;
     }
     public function transact(array $f, bool $preview=false): array
     {
@@ -147,6 +182,7 @@ final class Books
         if ($related && !in_array($kind,['reverse','reissue','refund','receipt','supplier_payment','salary_payment','repayment','customer_refund','supplier_refund'],true)) {
             throw new DomainException('This transaction cannot link an original document.');
         }
+        if ($original && $original['kind']==='revaluation') { throw new DomainException('A revaluation cannot be linked or reversed. Run a new revaluation instead.'); }
         if ($original && ($day<$original['day'] || $original['reversal_of'] || $this->rows('SELECT id FROM documents WHERE reversal_of=?',[$related]))) {
             throw new DomainException('Choose an active original document dated on or before this operation.');
         }
