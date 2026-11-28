@@ -636,5 +636,9 @@
   "PNR, ticket, reference or amount": "رقم الحجز أو التذكرة أو المرجع أو المبلغ",
   "No lines match your search.": "لا توجد قيود مطابقة للبحث.",
   "Money in": "وارد",
-  "Money out": "صادر"
+  "Money out": "صادر",
+  "Export": "تصدير",
+  "Saved": "محفوظ",
+  "Profit": "الربح",
+  "Accounting details": "التفاصيل المحاسبية"
 }
