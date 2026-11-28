@@ -181,7 +181,7 @@ with tempfile.TemporaryDirectory() as temp:
         assert "76.00" in call("/")
         statement_url="/branches/1/office/report?view=statement&account=customer:1&from=2026-11-01&to=2026-11-30"
         customer_copy=call(statement_url)
-        assert "Closing balance" in customer_copy and "586.25" in customer_copy
+        assert "Closing balance" in customer_copy and "586.25" in customer_copy and "amend=" in customer_copy and "Void" not in customer_copy
         assert "Supplier One" not in customer_copy.split('<article class="statement-paper">',1)[1].split('</article>',1)[0]
         assert "Closing balance" in call(statement_url+"&download=csv")
         call(statement_url,dict(_token=token,external="580",side="Dr"))

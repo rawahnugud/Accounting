@@ -55,7 +55,7 @@ final class Corrections
             // A document in a closed period is reversed today, leaving the closed books unchanged.
             $closed=$this->books->rows('SELECT closed_through FROM periods WHERE branch_id=?',[$this->branch])[0]['closed_through'] ?? '';
             $reversal=$this->books->postWithinTransaction(['kind'=>'reverse','related'=>$id,'day'=>$doc['day']>$closed?$doc['day']:date('Y-m-d'),
-                'reference'=>"Void D-$id",'note'=>$reason,'request_key'=>(string)Uuid::v4()])['id'];
+                'reference'=>"Deleted D-$id",'note'=>$reason,'request_key'=>(string)Uuid::v4()])['id'];
             $result=$reversal;
             $detail="D-$id; reversal D-$reversal";
             if (!$void) {
@@ -76,7 +76,7 @@ final class Corrections
                 }
             }
             $this->db->prepare('INSERT INTO audit_events(user_id,action,detail) VALUES(?,?,?)')
-                ->execute([$this->actor,$void?'Void document':'Amend document',$detail.' · '.$reason]);
+                ->execute([$this->actor,$void?'Delete document':'Amend document',$detail.' · '.$reason]);
             $this->db->exec('COMMIT');
             return $result;
         } catch (\Throwable $e) {
