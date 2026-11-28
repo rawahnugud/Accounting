@@ -30,6 +30,32 @@ final class OfficeController extends AbstractController
     {
         return $this->rows('SELECT id,is_admin FROM users WHERE email=?',[$this->getUser()->getUserIdentifier()])[0] ?? throw $this->createAccessDeniedException();
     }
+    /** The branch a short address means: the user's Sudan branch, else their first one. */
+    private function homeBranch(array $u): int
+    {
+        $rows=$u['is_admin'] ? $this->rows('SELECT id,name FROM branches ORDER BY id')
+            : $this->rows('SELECT b.id,b.name FROM branches b JOIN branch_staff s ON s.branch_id=b.id WHERE s.user_id=? ORDER BY b.id',[$u['id']]);
+        foreach ($rows as $row) { if (strcasecmp(trim($row['name']),'Sudan')===0) { return (int)$row['id']; } }
+        return (int)($rows[0]['id'] ?? 0);
+    }
+    /** Sends old /branches/N/office/... and /control bookmarks to the short addresses. */
+    public function legacy(Request $r,int $branch=0,string $section=''): Response
+    {
+        $q=$r->query->all();
+        $status=$r->isMethod('POST')?308:301;
+        if ($section==='') { return $this->redirect($this->generateUrl('control',$q),$status); }
+        if ($branch!==$this->homeBranch($this->identity())) { $q['branch']=$branch; }
+        foreach (['doc','amend'] as $k) { if (isset($q[$k]) && !ctype_digit((string)(is_array($q[$k])?'':$q[$k]))) { unset($q[$k]); } }
+        $route='office';
+        $task=is_string($q['task'] ?? null)?$q['task']:'';
+        if ($section==='post' && isset($q['amend'])) { $q+=['section'=>'edit','doc'=>$q['amend']]; unset($q['amend']); }
+        elseif ($section==='post' && isset(Books::TYPES[$task])) { $route='task'; $q['task']=str_replace('_','-',$task); }
+        elseif ($section==='post') { $q['section']='new'; unset($q['task']); }
+        elseif ($section==='report' && isset($q['doc'])) { $q['section']='d'; }
+        elseif ($section==='report') { $q['section']=($q['view'] ?? '')==='statement'?'statement':'ledger'; unset($q['view']); }
+        else { $q['section']=['statements'=>'reports'][$section] ?? $section; }
+        return $this->redirect($this->generateUrl($route,$q),$status);
+    }
     private function csrf(Request $r): void
     {
         if (!$this->isCsrfTokenValid('staff',$r->request->get('_token'))) { throw new HttpException(419,'Form expired.'); }
@@ -294,6 +320,8 @@ final class OfficeController extends AbstractController
     {
         $this->csrf($r);
         $u=$this->identity();
+        $home=$this->homeBranch($u);
+        $branch=$branch ?: ($r->query->getInt('branch') ?: $home);
         if (!$u['is_admin'] && !$this->rows("SELECT 1 FROM branch_staff WHERE user_id=? AND branch_id=? AND role='cashier'",[$u['id'],$branch])) { throw $this->createAccessDeniedException(); }
         $f=$r->request;
         $this->db->exec('BEGIN IMMEDIATE');
@@ -361,12 +389,22 @@ final class OfficeController extends AbstractController
             if (!$e instanceof DomainException) { throw $e; }
             $this->addFlash('error',$e->getMessage());
         }
-        return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'dashboard']);
+        return $this->redirectToRoute('office',['branch'=>$branch===$home?0:$branch,'section'=>'dashboard']);
     }
 
     public function office(int $branch,string $section,Request $r): Response
     {
         $u=$this->identity();
+        $home=$this->homeBranch($u);
+        $branch=$branch ?: ($r->query->getInt('branch') ?: $home);
+        $link=$branch===$home?0:$branch;
+        // Short addresses carry the task or document in the path: /sale, /d/5, /edit/5, /statement.
+        $slug=$section; $doc=(string)$r->attributes->get('doc','');
+        $section=['new'=>'post','edit'=>'post','d'=>'report','ledger'=>'report','statement'=>'report','reports'=>'statements'][$slug] ?? $slug;
+        $r->attributes->set('section',$section);
+        if ($r->attributes->has('task')) { $r->query->set('task',str_replace('-','_',$r->attributes->get('task'))); }
+        if ($slug==='edit') { $r->query->set('amend',$doc); } elseif ($doc!=='') { $r->query->set('doc',$doc); }
+        if ($slug==='statement') { $r->query->set('view','statement'); }
         $scope=$this->rows("SELECT b.name,c.reporting_currency AS base,c.name AS company,
             CASE WHEN CAST(? AS INTEGER)=1 THEN 'admin' ELSE s.role END AS role FROM branches b JOIN companies c ON c.id=b.company_id
             LEFT JOIN branch_staff s ON s.branch_id=b.id AND s.user_id=? WHERE b.id=? AND (CAST(? AS INTEGER)=1 OR s.user_id IS NOT NULL)",
@@ -376,9 +414,9 @@ final class OfficeController extends AbstractController
         if ($u['is_admin']) { $info['role']='admin'; }
         $books=new Books($this->db,$branch,(int)$u['id']);
         $f=[]; $preview=null;
-        // Where Edit, Delete and Cancel return to: a path inside this branch, such as the statement the person came from.
+        // Where Edit, Delete and Cancel return to: a path on this site, such as the statement the person came from.
         $back=(string)($r->request->get('back') ?? $r->query->get('back') ?? '');
-        if (!preg_match('#^/branches/'.$branch.'/[A-Za-z0-9/_-]*(\?[^\s<>"\'\\\\]*)?$#D',$back)) { $back=''; }
+        if (!preg_match('#^/(?!/)[A-Za-z0-9/_-]*(\?[^\s<>"\'\\\\]*)?$#D',$back)) { $back=''; }
         if ($section==='post' && $info['role']==='viewer') { throw $this->createAccessDeniedException(); }
         if ($section==='post' && $r->isMethod('GET') && $r->query->getInt('amend')) {
             if ($info['role']==='viewer') { throw $this->createAccessDeniedException(); }
@@ -404,7 +442,7 @@ final class OfficeController extends AbstractController
                     $this->db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'discard entry',?)")->execute([$u['id'],'Request '.(int)$f['draft']]);
                     $this->addFlash('message','Unfinished entry discarded.');
                 }
-                return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'dashboard']);
+                return $this->redirectToRoute('office',['branch'=>$link,'section'=>'dashboard']);
             }
             // Check amounts and Edit details on an amendment use the normal preview below; Confirm posting saves the amendment.
             if (isset($f['amend']) && in_array($mode,['void','save','confirm'],true)) {
@@ -413,10 +451,10 @@ final class OfficeController extends AbstractController
                     $newId=(new Corrections($this->db,$branch,(int)$u['id']))->save((int)$f['amend'],$f,$mode==='void');
                     $this->addFlash('message',$mode==='void'?'Entry deleted.':'Correction recorded.');
                     if ($back!=='') { return $this->redirect($r->getBasePath().$back); }
-                    return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'report','doc'=>$newId]);
+                    return $this->redirectToRoute('office',['branch'=>$link,'section'=>'d','doc'=>$newId]);
                 } catch (DomainException $e) {
                     $this->addFlash('error',$e->getMessage());
-                    return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'report','doc'=>(int)$f['amend']]);
+                    return $this->redirectToRoute('office',['branch'=>$link,'section'=>'d','doc'=>(int)$f['amend']]);
                 }
             }
             if (isset($f['amend']) && $mode!=='preview' && $mode!=='edit') { throw new HttpException(422,'Invalid action.'); }
@@ -428,7 +466,7 @@ final class OfficeController extends AbstractController
                     $result=$books->transact($f,$isPreview);
                     if (!$isPreview || $result['id']) {
                         $this->addFlash('message','Saved to the ledger.');
-                        return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'report','doc'=>$result['id']]);
+                        return $this->redirectToRoute('office',['branch'=>$link,'section'=>'d','doc'=>$result['id']]);
                     }
                     $preview=$result['lines'];
                 } catch (DomainException $e) {
@@ -509,7 +547,7 @@ final class OfficeController extends AbstractController
                             ->execute([$u['id'],$selected.' '.$to]);
                     }
                     $this->db->exec('COMMIT');
-                    return $this->redirectToRoute('office',['branch'=>$branch,'section'=>'report','view'=>'statement','account'=>$selected,'from'=>$from,'to'=>$to]);
+                    return $this->redirectToRoute('office',['branch'=>$link,'section'=>'statement','account'=>$selected,'from'=>$from,'to'=>$to]);
                 }
             } catch (\Throwable $e) {
                 if ($checking) { $this->db->exec('ROLLBACK'); }
@@ -543,7 +581,7 @@ final class OfficeController extends AbstractController
                 rewind($file);
                 return new Response(stream_get_contents($file),200,['Content-Type'=>'text/csv; charset=utf-8','Content-Disposition'=>'attachment; filename="statement-'.$from.'-'.$to.'.csv"']);
             }
-            return $this->render('account_statement.html.twig',compact('branch','info','groups','account','selected','from','to','today','statement','profile','error','checks'));
+            return $this->render('account_statement.html.twig',['branch'=>$link]+compact('info','groups','account','selected','from','to','today','statement','profile','error','checks'));
         }
         if ($section==='statements') {
             try {
@@ -580,7 +618,7 @@ final class OfficeController extends AbstractController
                 $row['base']=Amounts::display($row['base'],$prec[$info['base']]);
             } unset($row);
             $profile=$this->rows('SELECT p.* FROM company_profiles p JOIN branches b ON b.company_id=p.company_id WHERE b.id=?',[$branch])[0] ?? [];
-            return $this->render('statements.html.twig',compact('report','profile','info','from','to','names','branch','netProfit','currencies'));
+            return $this->render('statements.html.twig',compact('report','profile','info','from','to','names','netProfit','currencies')+['branch'=>$link]);
         }
         $where=['branch_id=?']; $args=[$branch];
         foreach (['from'=>'day>=?','to'=>'day<=?','account'=>'account=?','user'=>'user_id=?','doc'=>"number='D-'||?",'number'=>'number=?'] as $key=>$clause) {
@@ -717,7 +755,7 @@ final class OfficeController extends AbstractController
             $preview[$i]['native']=Amounts::display($e['native'],$prec[$e['currency']]);
             $preview[$i]['base']=Amounts::display($e['base'],$prec[$info['base']]);
         }
-        return $this->render('office.html.twig',compact('section','info','branch','metrics','dual','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','recs','pending','checks','matches','back')+[
+        return $this->render('office.html.twig',['branch'=>$link]+compact('section','info','metrics','dual','parties','cash','names','doc','lines','totals','prec','preview','f','aging','schedule','services','recs','pending','checks','matches','back')+[
             'recentSales'=>$recentSales,'adminTypes'=>Books::ADMIN_TYPES,'truncated'=>$truncated,'expenseCategories'=>Books::EXPENSE_CATEGORIES,
             'recentDocs'=>$section==='post' ? $this->rows('SELECT id,reference,day FROM documents d WHERE branch_id=? AND reversal_of IS NULL AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id) ORDER BY id DESC LIMIT 100',[$branch]) : [],
             'types'=>Books::TYPES,'key'=>(string)Uuid::v4(),'today'=>date('Y-m-d'),
