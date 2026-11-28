@@ -56,7 +56,7 @@
 <label>{{ 'Converted amount in'|ui }} <bdi>{{ info.base }}</bdi> {{ '(optional)'|ui }}<input name="converted" inputmode="decimal" value="{{ f.converted|default('') }}"></label></div>{% endif %}
 {% if kind=='payroll' %}<div class="grid">{% for k,label in {allowance:'Allowances',deduction:'Deductions'} %}<label>{{ (label)|ui }} {{ '(optional)'|ui }}<input name="{{ k }}" inputmode="decimal" value="{{ f[k]|default('') }}"></label>{% endfor %}</div>{% endif %}
 {% if kind=='reverse' %}<label>{{ 'Reason for voiding'|ui }}<input name="note" required value="{{ f.note|default('') }}"></label>
-{% elseif kind in ['sale','reissue','refund','liability','loan','opening_party','payroll'] %}<details {{ f.due|default('') or f.note|default('')?'open' }}><summary>{{ 'Due date and notes'|ui }}</summary><label>{{ 'Due date'|ui }}<input type="date" name="due" value="{{ f.due|default('') }}"></label><label>{{ 'Notes'|ui }}<input name="note" value="{{ f.note|default('') }}"></label></details>{% endif %}
+{% endif %}
 <button name="mode" value="save">{{ (kind=='sale'?'Save sale':'Save transaction')|ui }}</button> <button class="secondary" name="mode" value="preview">{{ 'Check amounts before saving'|ui }}</button>
 </form>
 <script>

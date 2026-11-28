@@ -231,7 +231,7 @@ with tempfile.TemporaryDirectory() as temp:
         assert "Recent sales" in call("/login",{"email":"viewer@example.test","password":"new-password-123","_token":field(login,"_token")})
         client=signed_in
         assert "Change this entry" in call("/branches/1/office/report?doc=1") and ">Edit</a>" in call("/branches/1/office/report")
-        assert "Due date" not in call("/branches/1/office/post?task=transfer") and "Due date" in call("/branches/1/office/post?task=sale")
+        assert "Due date" not in call("/branches/1/office/post?task=transfer") and "Due date" not in call("/branches/1/office/post?task=sale")
         print("PASS allocations, cancellations, management report, recovered sale, registrations, workbook and document numbering")
         ar = call("/branches/1/office/dashboard?lang=ar")
         assert 'lang="ar" dir="rtl"' in ar and 'تسجيل عملية بيع' in ar
