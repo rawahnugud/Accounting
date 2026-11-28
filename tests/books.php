@@ -174,3 +174,15 @@ $deposit=$sales->transact(form('deposit',['cash'=>1,'amount'=>'5','day'=>'2027-0
 (new App\Accounting\Corrections($db,1,2))->save($deposit,['reason'=>'Sales void test'],true);
 same((int)$db->query("SELECT COUNT(*) FROM documents WHERE reversal_of=$deposit")->fetchColumn(),1);
 echo "PASS bulk re-rate by date range and account skips paid invoices, sales staff post and void\n";
+// Matching is retired: deleting a document with an old allocation removes it and reverses its exchange difference.
+$inv=$post('sale',['customer'=>1,'amount'=>'10','day'=>'2027-02-08']);
+$rec=$post('receipt',['cash'=>1,'customer'=>1,'amount'=>'10','day'=>'2027-02-08']);
+$db->exec("INSERT INTO documents(branch_id,user_id,kind,day,due,reference,details,request_key,fingerprint) VALUES (1,1,'allocation_fx','2027-02-08','2027-02-08','Match','{}','fx-test','f')");
+$fx=(int)$db->lastInsertId();
+$db->exec("INSERT INTO entries(document_id,account,currency,native_minor,base_minor,rate) VALUES ($fx,'customer:1','USD',0,7,'historical'),($fx,'fx','USD',-7,-7,'1')");
+$db->exec("INSERT INTO matches(branch_id,account,debit_doc,credit_doc,amount_minor,user_id,request_key,fx_doc,debit_base,credit_base) VALUES (1,'customer:1',$inv,$rec,1000,1,'m-test',$fx,1000,1000)");
+(new App\Accounting\Corrections($db,1,1))->save($rec,['reason'=>'Old allocation'],true);
+same((int)$db->query("SELECT COUNT(*) FROM matches")->fetchColumn(),0);
+same((int)$db->query("SELECT COUNT(*) FROM documents WHERE reversal_of IN ($fx,$rec)")->fetchColumn(),2);
+same((int)$db->query("SELECT outstanding_minor FROM open_items WHERE id=$inv")->fetchColumn(),1000);
+echo "PASS deleting a document removes its old allocation and reverses the exchange difference\n";

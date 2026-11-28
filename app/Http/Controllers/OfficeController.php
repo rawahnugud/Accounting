@@ -182,14 +182,6 @@ final class OfficeController extends AbstractController
             }
             $run("DELETE FROM $table WHERE id=?",[$id]);
             return json_encode(['account'=>$key,'removed'=>$old,'reason'=>$reason],JSON_UNESCAPED_UNICODE);
-        case 'supplier reconciliation':
-            $p=$this->rows("SELECT p.*,c.decimals FROM parties p JOIN currencies c ON c.code=p.currency WHERE p.id=? AND p.kind='supplier'",[$f['party']])[0] ?? throw new DomainException('Choose a supplier.');
-            $day=Books::date($this->field($f,'day'));
-            $balance=$this->rows('SELECT -COALESCE(SUM(native_minor),0) AS total FROM ledger WHERE branch_id=? AND account=? AND day<=?',[$p['branch_id'],'supplier:'.$p['id'],$day])[0]['total'];
-            $amount=Amounts::clean($this->field($f,'amount'));
-            if (!preg_match('/^-?[0-9]+(?:\.[0-9]+)?$/D',$amount)) { throw new DomainException('Invalid statement amount.'); }
-            $minor=Amounts::parse(ltrim($amount,'-'),$p['decimals'])*(str_starts_with($amount,'-')?-1:1);
-            $run('INSERT INTO supplier_checks(party_id,day,statement_minor,ledger_minor,user_id) VALUES (?,?,?,?,?)',[$p['id'],$day,$minor,$balance,$actor]); break;
         case 'company profile':
             $registration=trim($f['registration'] ?? '');
             if (strlen($registration)>200) { throw new DomainException('Check registration.'); }
@@ -303,95 +295,11 @@ final class OfficeController extends AbstractController
             $ids=(new Books($this->db,$branch,$actor))->revalue($this->field($f,'day'));
             if (!$ids) { throw new DomainException('Foreign balances already match the rate on this date.'); }
             $f['documents']='D-'.implode(', D-',$ids); break;
-        case 'reconcile':
-            $cash=$this->rows('SELECT a.*,c.decimals FROM cash_accounts a JOIN currencies c ON c.code=a.currency WHERE a.id=?',[$f['cash']])[0] ?? throw new DomainException('Choose an account.');
-            $date=Books::date($this->field($f,'day'));
-            $balance=$this->rows('SELECT COALESCE(SUM(native_minor),0) AS balance FROM ledger WHERE account=? AND branch_id=? AND day<=?',['cash:'.$cash['id'],$cash['branch_id'],$date])[0]['balance'];
-            $amount=Amounts::clean($this->field($f,'amount'));
-            if (!preg_match('/^-?[0-9]+(?:\.[0-9]+)?$/D',$amount)) { throw new DomainException('Invalid statement balance.'); }
-            $statement=Amounts::parse(ltrim($amount,'-'),$cash['decimals'])*(str_starts_with($amount,'-')?-1:1);
-            $run('INSERT INTO reconciliations(cash_id,day,statement_minor,ledger_minor,user_id) VALUES (?,?,?,?,?)',[$cash['id'],$date,$statement,$balance,$actor]); break;
         default: throw new DomainException('Unknown setup action.');
         }
         unset($f['password'],$f['_token'],$f['action']);
         return json_encode($f,JSON_THROW_ON_ERROR);
     }
-    public function matchItems(int $branch,Request $r): Response
-    {
-        $this->csrf($r);
-        $u=$this->identity();
-        $home=$this->homeBranch($u);
-        $branch=$branch ?: ($r->query->getInt('branch') ?: $home);
-        if (!$u['is_admin'] && !$this->rows("SELECT 1 FROM branch_staff WHERE user_id=? AND branch_id=? AND role='cashier'",[$u['id'],$branch])) { throw $this->createAccessDeniedException(); }
-        $f=$r->request;
-        $this->db->exec('BEGIN IMMEDIATE');
-        try {
-            $actor=(int)$u['id'];
-            $today=date('Y-m-d');
-            if ($this->rows('SELECT 1 FROM periods WHERE branch_id=? AND closed_through>=?',[$branch,$today])) {
-                throw new DomainException('Today is in a closed period.');
-            }
-            if ($f->get('remove')) {
-                $id=(int)$f->get('remove');
-                $m=$this->rows('SELECT * FROM matches WHERE id=? AND branch_id=?',[$id,$branch])[0] ?? throw new DomainException('Allocation unavailable.');
-                $this->db->prepare('INSERT INTO match_history(branch_id,account,debit_doc,credit_doc,amount_minor,user_id,request_key,fx_doc,removed_by)
-                    SELECT branch_id,account,debit_doc,credit_doc,amount_minor,user_id,request_key,fx_doc,? FROM matches WHERE id=?')->execute([$actor,$id]);
-                $this->db->prepare('DELETE FROM matches WHERE id=?')->execute([$id]);
-                if ($m['fx_doc']) {
-                    (new Books($this->db,$branch,$actor))->postWithinTransaction(['kind'=>'reverse','day'=>$today,'reference'=>'Cancel allocation '.$id,
-                        'related'=>(string)$m['fx_doc'],'request_key'=>(string)Uuid::v4()]);
-                }
-                $detail='Removed allocation '.$id;
-            } else {
-                $account=(string)$f->get('account');
-                $debit=(int)$f->get('debit'); $credit=(int)$f->get('credit');
-                $key=(string)$f->get('request_key');
-                if (!Uuid::isValid($key)) { throw new DomainException('Refresh this form.'); }
-                $prior=$this->rows('SELECT id FROM matches WHERE branch_id=? AND request_key=? UNION ALL SELECT id FROM match_history WHERE branch_id=? AND request_key=?',[$branch,$key,$branch,$key]);
-                if ($prior) { throw new DomainException('This allocation request was already processed.'); }
-                $items=$this->rows('SELECT o.*,c.decimals FROM open_items o JOIN currencies c ON c.code=o.currency WHERE branch_id=? AND account=? AND id IN (?,?)',[$branch,$account,$debit,$credit]);
-                $byId=array_column($items,null,'id');
-                if (!isset($byId[$debit],$byId[$credit]) || $debit===$credit) { throw new DomainException('Choose opposite documents for the same account.'); }
-                $minor=Amounts::parse((string)$f->get('amount'),$byId[$debit]['decimals']);
-                if (!$minor || $minor>$byId[$debit]['outstanding_minor'] || $minor>-$byId[$credit]['outstanding_minor']) { throw new DomainException('Amount exceeds an open debit or credit.'); }
-                if ($byId[$debit]['day']>$today || $byId[$credit]['day']>$today) { throw new DomainException('A future item cannot be matched today.'); }
-                // Settlement allocations relieve historical carrying values; the last installment absorbs rounding.
-                $carried=function(array $item,int $sign) use ($account,$minor):int {
-                    $linked=$this->rows("SELECT COALESCE(SUM(e.base_minor),0) AS total FROM entries e JOIN documents d ON d.id=e.document_id
-                        WHERE d.related_id=? AND e.account=? AND d.kind IN ('receipt','supplier_payment','salary_payment','repayment','customer_refund','supplier_refund')
-                        AND NOT EXISTS(SELECT 1 FROM documents x WHERE x.reversal_of=d.id)",[$item['id'],$account])[0]['total'];
-                    $field=$sign>0?'debit_doc':'credit_doc';
-                    $baseField=$sign>0?'debit_base':'credit_base';
-                    $already=$this->rows("SELECT COALESCE(SUM($baseField),0) AS total FROM matches WHERE $field=? AND account=?",[$item['id'],$account])[0]['total'];
-                    return Amounts::ratio(abs($item['original_base']+$linked)-$already,$minor,abs($item['outstanding_minor']));
-                };
-                $dr=$carried($byId[$debit],1); $cr=$carried($byId[$credit],-1);
-                $diff=$cr-$dr;
-                $fx=null;
-                if ($diff) {
-                    $base=$this->rows('SELECT c.reporting_currency FROM branches b JOIN companies c ON c.id=b.company_id WHERE b.id=?',[$branch])[0]['reporting_currency'];
-                    $this->db->prepare("INSERT INTO documents(branch_id,user_id,kind,day,due,reference,details,request_key,fingerprint) VALUES (?,?,'allocation_fx',?,?,?,'{}',?,?)")
-                        ->execute([$branch,$actor,$today,$today,"Match D-$debit / D-$credit",$key,hash('sha256',$key)]);
-                    $fx=$this->db->lastInsertId();
-                    $q=$this->db->prepare('INSERT INTO entries(document_id,account,currency,native_minor,base_minor,rate) VALUES (?,?,?,?,?,?)');
-                    $q->execute([$fx,$account,$byId[$debit]['currency'],0,$diff,'historical']);
-                    $q->execute([$fx,'fx',$base,-$diff,-$diff,'1']);
-                }
-                $this->db->prepare('INSERT INTO matches(branch_id,account,debit_doc,credit_doc,amount_minor,user_id,request_key,fx_doc,debit_base,credit_base) VALUES (?,?,?,?,?,?,?,?,?,?)')
-                    ->execute([$branch,$account,$debit,$credit,$minor,$actor,$key,$fx,$dr,$cr]);
-                $detail="Matched D-$debit and D-$credit on $account";
-            }
-            $this->db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'match',?)")->execute([$actor,$detail]);
-            $this->db->exec('COMMIT');
-            $this->addFlash('message',$detail);
-        } catch (\Throwable $e) {
-            $this->db->exec('ROLLBACK');
-            if (!$e instanceof DomainException) { throw $e; }
-            $this->addFlash('error',$e->getMessage());
-        }
-        return $this->redirectToRoute('office',['branch'=>$branch===$home?0:$branch,'section'=>'dashboard']);
-    }
-
     public function office(int $branch,string $section,Request $r): Response
     {
         $u=$this->identity();
@@ -429,7 +337,7 @@ final class OfficeController extends AbstractController
                 AND (requested_by=? OR CAST(? AS INTEGER)=1)",[$branch,$r->query->getInt('draft'),$u['id'],$u['is_admin']])[0] ?? throw $this->createNotFoundException();
             $f=json_decode($draft['payload'],true,512,JSON_THROW_ON_ERROR);
         }
-        if ($r->isMethod('POST') && !($section==='report' && $r->query->get('view')==='statement')) {
+        if ($r->isMethod('POST')) {
             if ($section!=='post' || $info['role']==='viewer') { throw $this->createAccessDeniedException(); }
             $this->csrf($r);
             $f=$r->request->all();
@@ -521,12 +429,6 @@ final class OfficeController extends AbstractController
                 $from=match($period) {'month'=>$month->format('Y-m-d'),'last'=>$month->modify('-1 month')->format('Y-m-d'),'year'=>substr($today,0,4).'-01-01'};
                 $to=$period==='last'?$month->modify('-1 day')->format('Y-m-d'):$today;
             }
-            $checking=$r->isMethod('POST');
-            if ($checking) {
-                if ($info['role']==='viewer') { throw $this->createAccessDeniedException(); }
-                $this->csrf($r);
-                $this->db->exec('BEGIN IMMEDIATE');
-            }
             $statement=null; $error=null; $account=$accounts[$selected] ?? null;
             try {
                 Books::date($from); Books::date($to);
@@ -534,34 +436,8 @@ final class OfficeController extends AbstractController
                 if ($account) {
                     $statement=(new AccountStatement($this->db))->read($branch,explode('@',$selected)[0],$account['currency'],$prec[$account['currency']],$from,$to);
                 }
-                if ($checking) {
-                    if (!$statement || !$account) { throw new DomainException('Choose an account.'); }
-                    $side=$r->request->get('side');
-                    if (!in_array($side,['Dr','Cr'],true)) { throw new DomainException('Select debit or credit.'); }
-                    $external=Amounts::parse(trim((string)$r->request->get('external')),$prec[$account['currency']])*($side==='Cr'?-1:1);
-                    $insert=$this->db->prepare('INSERT INTO statement_checks(branch_id,account,currency,as_of,ledger_minor,external_minor,user_id)
-                        VALUES (?,?,?,?,?,?,?) ON CONFLICT(branch_id,account,as_of,ledger_minor,external_minor) DO NOTHING');
-                    $insert->execute([$branch,$selected,$account['currency'],$to,$statement['closing_minor'],$external,$u['id']]);
-                    if ($insert->rowCount()) {
-                        $this->db->prepare("INSERT INTO audit_events(user_id,action,detail) VALUES (?,'statement reconciliation',?)")
-                            ->execute([$u['id'],$selected.' '.$to]);
-                    }
-                    $this->db->exec('COMMIT');
-                    return $this->redirectToRoute('office',['branch'=>$link,'section'=>'statement','account'=>$selected,'from'=>$from,'to'=>$to]);
-                }
-            } catch (\Throwable $e) {
-                if ($checking) { $this->db->exec('ROLLBACK'); }
-                if (!$e instanceof DomainException) { throw $e; }
+            } catch (DomainException $e) {
                 $error=$e->getMessage();
-            }
-            $checks=[];
-            if ($statement && $info['role']!=='viewer') {
-                $checks=$this->rows('SELECT s.*,u.name AS staff FROM statement_checks s JOIN users u ON u.id=s.user_id
-                    WHERE s.branch_id=? AND s.account=? AND s.as_of=? ORDER BY s.id DESC LIMIT 5',[$branch,$selected,$to]);
-                foreach ($checks as &$check) {
-                    $check['difference']=Amounts::format($check['external_minor']-$check['ledger_minor'],$prec[$account['currency']]);
-                    $check['external']=Amounts::format(abs($check['external_minor']),$prec[$account['currency']]);
-                } unset($check);
             }
             $profile=$this->rows('SELECT p.* FROM company_profiles p JOIN branches b ON b.company_id=p.company_id WHERE b.id=?',[$branch])[0] ?? [];
             if ($query->get('download')==='csv' && $statement) {
@@ -581,7 +457,7 @@ final class OfficeController extends AbstractController
                 rewind($file);
                 return new Response(stream_get_contents($file),200,['Content-Type'=>'text/csv; charset=utf-8','Content-Disposition'=>'attachment; filename="statement-'.$from.'-'.$to.'.csv"']);
             }
-            return $this->render('account_statement.html.twig',['branch'=>$link]+compact('info','groups','account','selected','from','to','today','statement','profile','error','checks'));
+            return $this->render('account_statement.html.twig',['branch'=>$link]+compact('info','groups','account','selected','from','to','today','statement','profile','error'));
         }
         if ($section==='statements') {
             try {

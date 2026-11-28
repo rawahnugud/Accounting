@@ -82,9 +82,6 @@ final class Kernel extends BaseKernel
     protected function configureRoutes(RoutingConfigurator $routes): void
     {
         // Short single-branch paths; ?branch=N only appears for a branch other than the user's main one.
-        $routes->add('match_items','/matches')->controller([OfficeController::class,'matchItems'])->defaults(['branch'=>0])->methods(['POST']);
-        $routes->add('match_items_old','/branches/{branch}/matches')->controller([OfficeController::class,'matchItems'])
-            ->requirements(['branch'=>'\d+'])->methods(['POST']);
         $routes->add('overview','/overview')->controller([OfficeController::class,'overview'])->methods(['GET']);
         $routes->add('control','/settings')->controller([OfficeController::class,'control'])->methods(['GET','POST']);
         $routes->add('office','/{section}/{doc}')->controller([OfficeController::class,'office'])->defaults(['branch'=>0,'doc'=>''])

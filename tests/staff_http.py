@@ -163,10 +163,16 @@ with tempfile.TemporaryDirectory() as temp:
                            reference="Office test",mode="confirm",kind=kind)
             call("/new",dict(payload,**values))
         entry("receipt",cash="1",customer="1",amount="5")
-        call("/matches",dict(_token=token,debit=1,credit=2,account="customer:1",amount="5",request_key=field(call("/sale"),"request_key")))
+        # Matching is retired: the endpoint is gone, and deleting a document removes any old allocation on it.
+        call("/matches",dict(_token=token),404)
+        conn.execute("INSERT INTO matches(branch_id,account,debit_doc,credit_doc,amount_minor,user_id,request_key,debit_base,credit_base) VALUES (1,'customer:1',1,2,500,2,?,500,500)",(str(uuid.uuid4()),))
+        conn.commit()
         assert conn.execute("SELECT outstanding_minor FROM open_items WHERE id=1").fetchone()==(1025,)
-        call("/matches",dict(_token=token,remove=1))
+        call("/new",dict(_token=token,amend=2,mode="void",reason="Old allocation"))
+        assert conn.execute("SELECT COUNT(*) FROM matches").fetchone()==(0,)
+        assert conn.execute("SELECT COUNT(*) FROM match_history").fetchone()==(1,)
         assert conn.execute("SELECT outstanding_minor FROM open_items WHERE id=1").fetchone()==(1525,)
+        entry("receipt",cash="1",customer="1",amount="5")
         draft_key=str(uuid.uuid4())
         unfinished=dict(kind="sale",customer="1",currency="USD",day="2026-11-27",
                         amount="576",cost="500",cost_currency="USD",reference="00",request_key=draft_key)
@@ -190,8 +196,7 @@ with tempfile.TemporaryDirectory() as temp:
         assert "Closing balance" in customer_copy and "586.25" in customer_copy and "/edit/" in customer_copy and "Void" not in customer_copy
         assert "Supplier One" not in customer_copy.split('<article class="statement-paper">',1)[1].split('</article>',1)[0]
         assert "Closing balance" in call(statement_url+"&download=csv")
-        call(statement_url,dict(_token=token,external="580",side="Dr"))
-        assert conn.execute("SELECT external_minor-ledger_minor FROM statement_checks").fetchone()==(-625,)
+        call(statement_url,dict(_token=token,external="580",side="Dr"),403)
         call(statement_url.replace("customer:1","customer:999999"),status=404)
         call("/settings",dict(_token=token,action="currency",branch=1,code="GBP",precision="2",initial_rate="2000"))
         assert conn.execute("SELECT rate FROM rates WHERE currency='GBP'").fetchone()==("2000",)
