@@ -626,5 +626,13 @@
   "← Back": "→ رجوع",
   "Save changes": "حفظ التعديلات",
   "Entry deleted.": "تم حذف القيد.",
-  "Bank and safe balances": "أرصدة البنوك والخزائن"
+  "Bank and safe balances": "أرصدة البنوك والخزائن",
+  "Customers who owe us or hold credit": "العملاء: مبالغ مستحقة لنا أو أرصدة دائنة لهم",
+  "Suppliers we owe or have paid ahead": "الموردون: مبالغ مستحقة لهم أو دفعات مقدمة",
+  "Banks and safes": "البنوك والخزائن",
+  "Record receipt": "تسجيل قبض",
+  "Pay supplier": "دفع للمورد",
+  "Find in this statement": "البحث في هذا الكشف",
+  "PNR, ticket, reference or amount": "رقم الحجز أو التذكرة أو المرجع أو المبلغ",
+  "No lines match your search.": "لا توجد قيود مطابقة للبحث."
 }

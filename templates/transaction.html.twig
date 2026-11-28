@@ -10,7 +10,7 @@
 <p>{{ 'Check the accounts and amounts below, then confirm to save this transaction.'|ui }}</p>
 <div class="scroll"><table><tr><th>{{ 'Account'|ui }}</th><th>{{ 'Account movement'|ui }}</th><th>{{ 'Value in'|ui }} <bdi>{{ info.base }}</bdi></th></tr>{% for e in preview %}<tr><td>{{ names[e.account]|default(e.account) }}</td><td><bdi>{{ e.native }}</bdi> {{ e.currency }}</td><td><bdi>{{ e.base }}</bdi></td></tr>{% endfor %}</table></div>
 <form method="post">{{ include('csrf.html.twig') }}{% for k,v in f %}{% if k not in ['_token','mode'] %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
-<button name="mode" value="confirm">{{ 'Confirm posting'|ui }}</button> <button class="secondary" name="mode" value="edit">{{ 'Edit details'|ui }}</button>{% if f.amend|default(0) %} <a href="{{ f.back|default('') ? app.request.basePath~f.back : path('office',{branch:branch,section:'d',doc:f.amend}) }}">{{ 'Cancel'|ui }}</a>{% endif %}</form>
+<button name="mode" value="confirm">{{ 'Confirm posting'|ui }}</button> <button class="secondary" name="mode" value="edit">{{ 'Edit details'|ui }}</button>{% if f.amend|default(0) or f.back|default('') %} <a href="{{ f.back|default('') ? app.request.basePath~f.back : path('office',{branch:branch,section:'d',doc:f.amend}) }}">{{ 'Cancel'|ui }}</a>{% endif %}</form>
 {% else %}
 {% set fields={
  sale:'customer supplier',reissue:'customer supplier',refund:'customer supplier',receipt:'customer cash',customer_refund:'customer cash',
@@ -20,10 +20,10 @@
 {% set accounts=(fields[kind]|default('cash'))|split(' ') %}
 {% set travel=kind in ['sale','reissue','refund'] %}
 {% set linked=kind in ['reissue','refund','receipt','customer_refund','supplier_payment','supplier_refund','repayment','salary_payment','reverse'] %}
-{% set cancel=not f.amend|default(0) ? '' : (f.back|default('') ? app.request.basePath~f.back : path('office',{branch:branch,section:'d',doc:f.amend})) %}
+{% set cancel=f.back|default('') ? app.request.basePath~f.back : (f.amend|default(0) ? path('office',{branch:branch,section:'d',doc:f.amend}) : '') %}
 {% if cancel %}<a href="{{ cancel }}">{{ '← Back'|ui }}</a>{% else %}<a href="{{ path('office',{branch:branch,section:'new'}) }}">{{ '← Choose a different task'|ui }}</a>{% endif %}
 <form class="card task-form" method="post">{{ include('csrf.html.twig') }}
-{% if f.amend|default(0) %}<h2>{{ 'Amend document'|ui }} D-{{ f.amend }}</h2><input type="hidden" name="amend" value="{{ f.amend }}"><input type="hidden" name="back" value="{{ f.back|default('') }}">{% endif %}
+{% if f.amend|default(0) %}<h2>{{ 'Amend document'|ui }} D-{{ f.amend }}</h2><input type="hidden" name="amend" value="{{ f.amend }}">{% endif %}{% if f.back|default('') %}<input type="hidden" name="back" value="{{ f.back }}">{% endif %}
 <input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="request_key" value="{{ f.request_key|default(key) }}">
 {% if kind=='opening_party' %}<p>{{ 'Choose either a customer or a supplier.'|ui }}</p>{% endif %}
 <div class="grid">

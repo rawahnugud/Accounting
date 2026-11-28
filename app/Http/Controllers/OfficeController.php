@@ -337,6 +337,11 @@ final class OfficeController extends AbstractController
                 AND (requested_by=? OR CAST(? AS INTEGER)=1)",[$branch,$r->query->getInt('draft'),$u['id'],$u['is_admin']])[0] ?? throw $this->createNotFoundException();
             $f=json_decode($draft['payload'],true,512,JSON_THROW_ON_ERROR);
         }
+        // A statement's Record receipt or Pay supplier link opens the form with that account chosen, and Cancel returns to the statement.
+        if ($section==='post' && $r->isMethod('GET') && !$f) {
+            foreach (['customer','supplier'] as $k) { if ($r->query->getInt($k)) { $f[$k]=(string)$r->query->getInt($k); } }
+            if ($back!=='') { $f['back']=$back; }
+        }
         if ($r->isMethod('POST')) {
             if ($section!=='post' || $info['role']==='viewer') { throw $this->createAccessDeniedException(); }
             $this->csrf($r);
@@ -429,7 +434,18 @@ final class OfficeController extends AbstractController
                 $from=match($period) {'month'=>$month->format('Y-m-d'),'last'=>$month->modify('-1 month')->format('Y-m-d'),'year'=>substr($today,0,4).'-01-01'};
                 $to=$period==='last'?$month->modify('-1 day')->format('Y-m-d'):$today;
             }
-            $statement=null; $error=null; $account=$accounts[$selected] ?? null;
+            $statement=null; $error=null; $account=$accounts[$selected] ?? null; $balances=[];
+            if (!$account) {
+                // With no account chosen, list who owes us, whom we owe and every bank or safe, each linking to its statement.
+                $held=[];
+                foreach ($this->rows("SELECT account,SUM(native_minor) AS native FROM ledger WHERE branch_id=? AND (account LIKE 'customer:%' OR account LIKE 'supplier:%' OR account LIKE 'cash:%') GROUP BY account",[$branch]) as $row) { $held[$row['account']]=(int)$row['native']; }
+                foreach ($accounts as $key=>$item) {
+                    $kind=explode(':',$key)[0]; $n=$held[$key] ?? 0;
+                    if (!in_array($kind,['customer','supplier','cash'],true) || ($kind!=='cash' && $n===0)) { continue; }
+                    $balances[$kind][]=$item+['key'=>$key,'minor'=>$n,'amount'=>Amounts::display(abs($n),$prec[$item['currency']]),'side'=>$n>0?'Dr':($n<0?'Cr':'')];
+                }
+                foreach ($balances as &$list) { usort($list,static fn($a,$b)=>abs($b['minor'])<=>abs($a['minor'])); } unset($list);
+            }
             try {
                 Books::date($from); Books::date($to);
                 if ($from>$to) { throw new DomainException('Start date is after end date.'); }
@@ -457,7 +473,7 @@ final class OfficeController extends AbstractController
                 rewind($file);
                 return new Response(stream_get_contents($file),200,['Content-Type'=>'text/csv; charset=utf-8','Content-Disposition'=>'attachment; filename="statement-'.$from.'-'.$to.'.csv"']);
             }
-            return $this->render('account_statement.html.twig',['branch'=>$link]+compact('info','groups','account','selected','from','to','today','statement','profile','error'));
+            return $this->render('account_statement.html.twig',['branch'=>$link]+compact('info','groups','account','selected','from','to','today','statement','profile','error','balances'));
         }
         if ($section==='statements') {
             try {
