@@ -27,16 +27,19 @@
 <input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="request_key" value="{{ f.request_key|default(key) }}">
 {% if kind=='opening_party' %}<p>{{ 'Choose either a customer or a supplier.'|ui }}</p>{% endif %}
 <div class="grid">
-{% for field in (kind=='reverse'?[]:(travel?['customer']:accounts)) %}{{ include('account_field.html.twig') }}{% endfor %}
+{% if kind=='balance_transfer' %}<p>{{ 'The From account is credited and the To account is debited, for example when a client pays a supplier or creditor directly.'|ui }}</p>
+{% for field,label in {from:'From account',to:'To account'} %}<label>{{ label|ui }}<select name="{{ field }}" required><option value="">{{ 'Choose an account'|ui }}</option>{% for group in ['customer','supplier','creditor','employee'] %}{% set options=parties|filter(p=>p.kind==group) %}{% if options %}<optgroup label="{{ group|capitalize|ui }}">{% for a in options %}<option value="{{ group }}:{{ a.id }}" data-currency="{{ a.currency }}" {{ f[field]|default('')==group~':'~a.id?'selected' }}>{{ a.name }} · {{ a.currency }}</option>{% endfor %}</optgroup>{% endif %}{% endfor %}</select></label>{% endfor %}
+{% else %}{% for field in (kind=='reverse'?[]:(travel?['customer']:accounts)) %}{{ include('account_field.html.twig') }}{% endfor %}{% endif %}
 {% if travel %}<label>{{ 'Service'|ui }}<select name="service"><option value="">{{ 'Choose service'|ui }}</option>{% if f.service|default('') and f.service not in services|map(s=>s.name) %}<option value="{{ f.service }}" selected>{{ f.service|ui }}</option>{% endif %}{% for s in services %}<option value="{{ s.name }}" {{ f.service|default('')==s.name?'selected' }}>{{ s.name|ui }}</option>{% endfor %}</select></label>
 {% endif %}
-{% if kind!='reverse' %}<label>{{ (kind=='sale'?'Selling price':(kind=='reissue'?'Additional selling price':'Amount'))|ui }}{% if 'cash' in accounts %} <bdi data-cash-currency></bdi>{% endif %}<input name="amount" inputmode="decimal" value="{{ f.amount|default('') }}" {{ not travel and kind!='payroll'?'required' }}><small>{{ (kind=='payroll'?'Leave blank to use the employee’s saved salary.':'')|ui }}</small></label>
-{% if 'cash' not in accounts %}<label>{{ 'Amount currency'|ui }}<select name="currency">{% for code,n in prec %}<option {{ f.currency|default(info.base)==code?'selected' }}>{{ code }}</option>{% endfor %}</select></label>{% endif %}{% endif %}
+{% if kind!='reverse' %}<label>{{ (kind=='sale'?'Selling price':(kind=='reissue'?'Additional selling price':'Amount'))|ui }}{% if 'cash' in accounts or kind=='balance_transfer' %} <bdi data-cash-currency></bdi>{% endif %}<input name="amount" inputmode="decimal" value="{{ f.amount|default('') }}" {{ not travel and kind!='payroll'?'required' }}><small>{{ (kind=='payroll'?'Leave blank to use the employee’s saved salary.':'')|ui }}</small></label>
+{% if kind=='balance_transfer' %}<label data-rate>{{ 'To amount'|ui }} <bdi data-to-currency></bdi> {{ '(optional)'|ui }}<input name="to_amount" inputmode="decimal" value="{{ f.to_amount|default('') }}"><small>{{ 'Enter the agreed amount in the To account currency, or leave blank to convert at the rate.'|ui }}</small></label>
+{% elseif 'cash' not in accounts %}<label>{{ 'Amount currency'|ui }}<select name="currency">{% for code,n in prec %}<option {{ f.currency|default(info.base)==code?'selected' }}>{{ code }}</option>{% endfor %}</select></label>{% endif %}{% endif %}
 {% if travel %}{% set field='supplier' %}{{ include('account_field.html.twig') }}
 <label>{{ 'Supplier cost (optional)'|ui }}<input name="cost" inputmode="decimal" value="{{ f.cost|default('') }}"><small>{{ 'Select the supplier when entering a cost.'|ui }}</small></label>
 <label>{{ 'Supplier cost currency'|ui }}<select name="cost_currency">{% for code,n in prec %}<option {{ f.cost_currency|default(f.currency|default(info.base))==code?'selected' }}>{{ code }}</option>{% endfor %}</select></label>
 {% endif %}
-{% if not travel and kind not in ['reverse','transfer'] %}<label data-rate>{{ 'Exchange rate'|ui }} ({{ 'units per 1'|ui }} <bdi>{{ info.base }}</bdi>) {{ '(optional)'|ui }}<input name="override" inputmode="decimal" value="{{ f.override|default('') }}"><small>{{ 'Enter the agreed rate when the bank or safe and the account use different currencies. Leave blank to use the saved rate.'|ui }}</small></label>{% elseif kind=='transfer' %}<label data-rate>{{ 'Exchange rate'|ui }} ({{ 'units per 1'|ui }} <bdi>{{ info.base }}</bdi>) {{ '(optional)'|ui }}<input name="override" inputmode="decimal" value="{{ f.override|default('') }}"><small>{{ 'Only needed between accounts in different currencies.'|ui }}</small></label>{% endif %}
+{% if not travel and kind not in ['reverse','transfer','balance_transfer'] %}<label data-rate>{{ 'Exchange rate'|ui }} ({{ 'units per 1'|ui }} <bdi>{{ info.base }}</bdi>) {{ '(optional)'|ui }}<input name="override" inputmode="decimal" value="{{ f.override|default('') }}"><small>{{ 'Enter the agreed rate when the bank or safe and the account use different currencies. Leave blank to use the saved rate.'|ui }}</small></label>{% elseif kind in ['transfer','balance_transfer'] %}<label data-rate>{{ 'Exchange rate'|ui }} ({{ 'units per 1'|ui }} <bdi>{{ info.base }}</bdi>) {{ '(optional)'|ui }}<input name="override" inputmode="decimal" value="{{ f.override|default('') }}"><small>{{ 'Only needed between accounts in different currencies.'|ui }}</small></label>{% endif %}
 {% if kind in ['fee','liability'] %}<label>{{ 'Expense category'|ui }}<select name="category"><option value="">{{ 'Other expenses'|ui }}</option>{% for c in expenseCategories %}<option value="{{ c }}" {{ f.category|default('')==c?'selected' }}>{{ c|ui }}</option>{% endfor %}</select></label>{% endif %}
 <label>{{ 'Transaction date'|ui }}<input type="date" name="day" value="{{ f.day|default(today) }}" required></label>
 <label>{{ 'Reference'|ui }}<input name="reference" maxlength="160" placeholder="{{ 'Generated if blank'|ui }}" value="{{ f.reference|default('') }}"></label>
@@ -61,7 +64,7 @@ document.querySelectorAll('.task-form select[name=customer],.task-form select[na
     if (target) { select.addEventListener('change',function() { const option=select.selectedOptions[0]; if (option && option.dataset.currency) { target.value=option.dataset.currency; } }); }
 });
 (function() {
-    const form=document.querySelector('.task-form'), el=form.elements, accounts=['customer','supplier','creditor','employee','cash','destination'].filter(n=>el[n]);
+    const form=document.querySelector('.task-form'), el=form.elements, accounts=['customer','supplier','creditor','employee','cash','destination','from','to'].filter(n=>el[n]);
     const currencyOf=name=>{ const o=el[name] && el[name].selectedOptions[0]; return o && o.dataset.currency; };
     let remembered=null; try { remembered=localStorage.getItem('mt-cash-{{ branch }}'); } catch (e) {}
     // Pick the only account, or the bank or safe used last time on this device.
@@ -76,7 +79,9 @@ document.querySelectorAll('.task-form select[name=customer],.task-form select[na
         if (el.currency) { used.add(el.currency.value); }
         if (el.cost_currency && el.cost && el.cost.value.trim()) { used.add(el.cost_currency.value); }
         form.querySelectorAll('[data-rate]').forEach(function(row) { row.hidden=used.size<2 && !row.querySelector('input').value.trim(); });
-        form.querySelectorAll('[data-cash-currency]').forEach(function(tag) { const c=currencyOf('cash'); tag.textContent=c ? '('+c+')' : ''; });
+        form.querySelectorAll('[data-cash-currency]').forEach(function(tag) { const c=currencyOf(el.from ? 'from' : 'cash'); tag.textContent=c ? '('+c+')' : ''; });
+        form.querySelectorAll('[data-to-currency]').forEach(function(tag) { const c=currencyOf('to'); tag.textContent=c ? '('+c+')' : ''; });
+        if (el.from) { [...el.to.options].forEach(o=>{ o.disabled=!!o.value && o.value===el.from.value; }); }
         if (el.destination) { [...el.destination.options].forEach(o=>{ o.disabled=!!o.value && o.value===el.cash.value; }); }
         const list=document.getElementById('documents'), owner=accounts.find(n=>n!=='cash');
         if (list && owner) { [...list.options].forEach(o=>{ o.disabled=!!el[owner].value && !!o.dataset.account && o.dataset.account!==el[owner].value; }); }
