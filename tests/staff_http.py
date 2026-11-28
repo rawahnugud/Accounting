@@ -220,6 +220,12 @@ with tempfile.TemporaryDirectory() as temp:
         assert "Forgot password?" in call("/login")
         forgot=call("/forgot-password")
         assert "reset link is on its way" in call("/forgot-password",dict(_token=field(forgot,"_token"),email="viewer@example.test"))
+        conn.execute("DELETE FROM password_reset_tokens"); conn.commit()
+        forged=request.Request(origin+"/forgot-password",data=parse.urlencode(dict(_token=field(forgot,"_token"),email="viewer@example.test")).encode(),headers={"Host":"evil.example"})
+        try: client.open(forged).close()
+        except error.HTTPError: pass
+        assert conn.execute("SELECT COUNT(*) FROM password_reset_tokens").fetchone()==(0,)
+        call("/forgot-password",dict(_token=field(forgot,"_token"),email="viewer@example.test"))
         raw="ab"*32
         conn.execute("UPDATE password_reset_tokens SET token=? WHERE email='viewer@example.test'",(hashlib.sha256(raw.encode()).hexdigest(),))
         conn.commit()
